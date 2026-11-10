@@ -1,0 +1,28 @@
+{
+  "name": "mxt-app",
+  "version": "0.1.0",
+  "description": "MXT – system zarządzania pracą firmy MXT",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "hash": "node scripts/hash.js",
+    "test": "node test/haslo.js && node test/smoke.js && node test/etap2.js && node test/etap3.js && node test/etap4.js"
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
+    "nodemailer": "^10.5.0",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "smtp-server": "^3.21.4"
+  }
+}

@@ -1,0 +1,44 @@
+# Wersja z własną bazą PostgreSQL. Uruchomienie: docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mxt
+      POSTGRES_PASSWORD: mxt
+      POSTGRES_DB: mxt
+    volumes:
+      - mxt-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mxt"]
+      interval: 3s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://mxt:mxt@db:5432/mxt
+      DATABASE_SSL: "0"
+      COOKIE_SECURE: "0"
+      PORT: "3000"
+      AI_MODE: "${AI_MODE:-test}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-0}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      APP_URL: "${APP_URL:-}"
+      MXT_SECRET_KEY: "${MXT_SECRET_KEY:-}"
+      N8N_ALLOWED_HOSTS: "${N8N_ALLOWED_HOSTS:-}"
+      LANGFUSE_HOST: "${LANGFUSE_HOST:-}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  mxt-db:

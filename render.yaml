@@ -1,0 +1,36 @@
+# Wdrożenie MXT na Render (Blueprint): aplikacja z Dockerfile + baza PostgreSQL.
+# Render → New → Blueprint → wskaż repozytorium z tym plikiem. Szczegóły: README, sekcja „Wdrożenie online”.
+services:
+  - type: web
+    name: mxt
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mxt-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "0"
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: AI_MODE
+        value: test
+      - key: MXT_SECRET_KEY
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+databases:
+  - name: mxt-db
+    plan: free
+    region: frankfurt

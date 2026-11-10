@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MXT</title>
+  <meta name="description" content="MXT – system zarządzania pracą">
+  <meta name="theme-color" content="#f5f6fa">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="MXT">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/modules.js" defer></script>
+  <script src="/biznes.js" defer></script>
+  <script src="/dzial1.js" defer></script>
+  <script src="/dzial2.js" defer></script>
+  <script src="/szkolenia.js" defer></script>
+  <script src="/etap4.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <!-- Pasek użytkownika (widoczny po zalogowaniu) -->
+  <div class="userbar" id="userbar" hidden>
+    <span class="userbar-name" id="userbar-name"></span>
+    <span class="role-chip" id="userbar-role" hidden></span>
+    <button type="button" class="btn btn-ghost" id="menu-toggle" aria-expanded="false" aria-controls="menu">Menu</button>
+    <button type="button" class="btn btn-ghost" id="logout">Wyloguj</button>
+  </div>
+  <nav class="menu" id="menu" aria-label="Menu główne" hidden></nav>
+
+  <main id="app" aria-live="polite">
+
+    <!-- Ładowanie (sprawdzanie sesji) -->
+    <section class="screen screen-center" data-screen="start">
+      <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+    </section>
+
+    <!-- Logowanie -->
+    <section class="screen screen-center" data-screen="login" hidden>
+      <div class="stack">
+        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+        <form class="card login" id="login-form" novalidate>
+          <h1 class="visually-hidden">Logowanie do MXT</h1>
+          <div class="field">
+            <label for="login">Login</label>
+            <input id="login" name="login" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+          </div>
+          <div class="field">
+            <label for="password">Hasło</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <p class="form-error" id="login-error" role="alert" hidden></p>
+          <button type="submit" class="btn btn-primary btn-block" id="login-submit">Zaloguj</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Zmiana hasła (wymagana przy pierwszym logowaniu) -->
+    <section class="screen screen-center" data-screen="password" hidden>
+      <div class="stack">
+        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+        <form class="card login" id="pw-form" novalidate>
+          <h1 class="pw-title" id="pw-title">Ustaw własne hasło</h1>
+          <p class="pw-lead" id="pw-lead"></p>
+          <div class="field">
+            <label for="pw-current">Obecne hasło</label>
+            <input id="pw-current" name="current" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="pw-new">Nowe hasło</label>
+            <input id="pw-new" name="new" type="password" autocomplete="new-password" required aria-describedby="pw-rules">
+          </div>
+          <div class="field">
+            <label for="pw-repeat">Powtórz nowe hasło</label>
+            <input id="pw-repeat" name="repeat" type="password" autocomplete="new-password" required>
+          </div>
+          <ul class="pw-rules" id="pw-rules" aria-live="polite"></ul>
+          <p class="form-error" id="pw-error" role="alert" hidden></p>
+          <button type="submit" class="btn btn-primary btn-block" id="pw-submit">Zmień hasło</button>
+          <button type="button" class="btn btn-ghost btn-block" id="pw-back" hidden>Anuluj</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Powitanie -->
+    <section class="screen screen-center" data-screen="welcome" hidden>
+      <div class="stack welcome">
+        <img class="logo logo-xl" src="/logo.png" alt="MXT" width="282" height="89">
+        <h1 class="welcome-title" id="welcome-title"></h1>
+        <div class="progress" aria-hidden="true"><i id="welcome-progress"></i></div>
+        <button type="button" class="btn btn-primary" id="welcome-next">Dalej</button>
+      </div>
+    </section>
+
+    <!-- Wybór działu -->
+    <section class="screen" data-screen="departments" hidden>
+      <div class="page">
+        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <h1 class="page-title">Wybierz dział</h1>
+        <div class="tiles" id="tiles"></div>
+        <button type="button" class="btn btn-command" id="open-command">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Command Center
+        </button>
+      </div>
+    </section>
+
+    <!-- Strona działu -->
+    <section class="screen" data-screen="department" hidden>
+      <div class="page">
+        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <p class="eyebrow">Dział</p>
+        <h1 class="page-title" id="dept-title"></h1>
+        <div class="empty">
+          <p>Moduły tego działu zostaną dodane w kolejnych etapach.</p>
+        </div>
+        <button type="button" class="btn btn-secondary" id="dept-back">Powrót do wyboru działu</button>
+      </div>
+    </section>
+
+    <!-- Moduły MXT Business OS (public/modules.js) -->
+    <section class="screen" data-screen="module" hidden>
+      <div class="page page-wide">
+        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <div id="module-root" class="module-root"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal-box"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <noscript><p class="noscript">Aplikacja MXT wymaga włączonej obsługi JavaScript.</p></noscript>
+</body>
+</html>

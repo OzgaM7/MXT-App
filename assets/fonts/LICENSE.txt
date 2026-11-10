@@ -1,0 +1,3 @@
+Czcionki DejaVu Sans (DejaVuSans.ttf, DejaVuSans-Bold.ttf) – https://dejavu-fonts.github.io/
+Licencja: Bitstream Vera Fonts Copyright + DejaVu changes are in public domain (wolna licencja, dozwolone osadzanie w dokumentach PDF).
+Używane do generowania protokołów, ofert, dokumentów eksportowych i zaświadczeń z polskimi znakami.
