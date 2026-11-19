@@ -5,7 +5,7 @@
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('ceo', 'CEO', 'Prezes Zarządu', 'zarzad', NULL, 1)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('ceo', 'CEO', 'CEO', '#141a3a', 'claude-opus-5-5', 0.30, 'medium', 50, true)
+  VALUES ('ceo', 'CEO', 'CEO', '#1a1a1a', 'claude-opus-5-5', 0.30, 'medium', 50, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'ceo', $mxt$Jesteś Prezesem Zarządu AI firmy MXT (CEO). MXT działa w trzech działach: Podzielniki i Montaże (podzielniki kosztów ciepła, montaże u wspólnot i spółdzielni), Sprzedaż części i eksport oraz Ubezpieczenia (tylko szkolenia pracowników).
@@ -41,7 +41,7 @@ Sposób pracy:
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('coo', 'COO', 'Dyrektor Operacyjny', 'zarzad', NULL, 3)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('coo', 'COO', 'COO', '#5b3fd1', 'claude-opus-5-5', 0.30, 'medium', 50, true)
+  VALUES ('coo', 'COO', 'COO', '#8a6d1f', 'claude-opus-5-5', 0.30, 'medium', 50, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'coo', $mxt$Jesteś Dyrektorem Operacyjnym Zarządu AI firmy MXT (COO).
@@ -58,7 +58,7 @@ Sposób pracy:
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('cso', 'CSO', 'Dyrektor Strategii i Sprzedaży', 'zarzad', NULL, 4)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('cso', 'CSO', 'CSO', '#1f6feb', 'claude-opus-5-5', 0.30, 'medium', 50, true)
+  VALUES ('cso', 'CSO', 'CSO', '#c8131c', 'claude-opus-5-5', 0.30, 'medium', 50, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'cso', $mxt$Jesteś Dyrektorem Strategii i Sprzedaży Zarządu AI firmy MXT (CSO).
@@ -91,7 +91,7 @@ Sposób pracy:
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('technik', 'Technik', 'Technik / Kierownik montaży', 'dzial', 'podzielniki-i-montaze', 6)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('technik', 'Technik', 'TEC', '#5b3fd1', 'claude-opus-5-5', 0.30, 'medium', 30, true)
+  VALUES ('technik', 'Technik', 'TEC', '#8a6d1f', 'claude-opus-5-5', 0.30, 'medium', 30, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'technik', $mxt$Jesteś Technikiem i Kierownikiem montaży działu Podzielniki i Montaże firmy MXT.
@@ -124,7 +124,7 @@ Sposób pracy:
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('kierownik_sprzedazy', 'Kierownik sprzedaży', 'Kierownik sprzedaży – Sprzedaż części i eksport', 'dzial', 'sprzedaz-czesci-i-eksport', 8)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('kierownik_sprzedazy', 'Kierownik sprzedaży', 'KSP', '#1f6feb', 'claude-opus-5-5', 0.30, 'medium', 30, true)
+  VALUES ('kierownik_sprzedazy', 'Kierownik sprzedaży', 'KSP', '#c8131c', 'claude-opus-5-5', 0.30, 'medium', 30, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'kierownik_sprzedazy', $mxt$Jesteś Kierownikiem sprzedaży działu Sprzedaż części i eksport firmy MXT.
@@ -140,7 +140,7 @@ Sposób pracy:
 INSERT INTO agents (id, name, title, agent_group, department_id, sort_order) VALUES ('eksport', 'Eksport i logistyka', 'Eksport i logistyka – Sprzedaż części i eksport', 'dzial', 'sprzedaz-czesci-i-eksport', 9)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, title = excluded.title, agent_group = excluded.agent_group, department_id = excluded.department_id, sort_order = excluded.sort_order;
 INSERT INTO agent_settings (agent_id, display_name, avatar, avatar_color, model, temperature, effort, cost_limit, is_active)
-  VALUES ('eksport', 'Eksport i logistyka', 'EKS', '#141a3a', 'claude-opus-5-5', 0.30, 'medium', 30, true)
+  VALUES ('eksport', 'Eksport i logistyka', 'EKS', '#1a1a1a', 'claude-opus-5-5', 0.30, 'medium', 30, true)
   ON CONFLICT (agent_id) DO NOTHING;
 INSERT INTO agent_prompt_versions (agent_id, prompt_text, version, author_user_id, is_default, is_current)
   SELECT 'eksport', $mxt$Jesteś specjalistą ds. eksportu i logistyki działu Sprzedaż części i eksport firmy MXT.

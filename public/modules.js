@@ -473,7 +473,7 @@
   const MEET_ST = { w_toku: 'W toku', oczekuje_decyzji: 'Czeka na decyzję', zakonczone: 'Zakończone', blad: 'Błąd' };
   const AG_ST = { aktywny: 'Aktywny', wylaczony: 'Wyłączony', zatrzymany: 'Zatrzymany' };
   const KIND = { test_promptu: 'Test promptu', zadanie: 'Zadanie', posiedzenie: 'Posiedzenie', raport: 'Raport' };
-  const avatar = (a, size) => `<span class="avatar${size ? ' avatar-' + size : ''}" data-bg="${/^#[0-9a-f]{6}$/i.test(a.avatar_color || '') ? a.avatar_color : '#141a3a'}" aria-hidden="true">${esc(a.avatar || (a.display_name || '').slice(0, 3))}</span>`;
+  const avatar = (a, size) => `<span class="avatar${size ? ' avatar-' + size : ''}" data-bg="${/^#[0-9a-f]{6}$/i.test(a.avatar_color || '') ? a.avatar_color : '#1a1a1a'}" aria-hidden="true">${esc(a.avatar || (a.display_name || '').slice(0, 3))}</span>`;
   const usd = n => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(n) || 0);
   const modeNote = mode => mode === 'live'
     ? '<div class="notice notice-live">Tryb rzeczywisty: agenci korzystają z modeli Claude. Wywołania są płatne i liczone w limitach kosztów.</div>'
@@ -638,7 +638,7 @@
   const diffHtml = (a, b) => `<pre class="diff">${lineDiff(a, b).map(([t, l]) => `<span class="d${t === '+' ? 'a' : t === '-' ? 'r' : 'n'}">${t} ${esc(l)}</span>`).join('\n')}</pre>`;
 
   function agentEditor(body, a, d, alive, reload) {
-    const COLORS = ['#141a3a', '#0b7f86', '#5b3fd1', '#1f6feb', '#9a5b00', '#1d7a46', '#b3261e'];
+    const COLORS = ['#1a1a1a', '#c8131c', '#8a6d1f', '#0b7f86', '#9a5b00', '#1d7a46', '#4a4a4a'];   // czerń, czerwień i złoto MXT + kolory pomocnicze
     body.innerHTML = `<div><button type="button" class="linkish" id="ae-back">← Lista agentów</button></div>
       <form class="panel ae" id="ae" novalidate>
         <div class="wf-top"><span id="ae-av">${avatar(a, 'lg')}</span><div class="wf-name"><h2 class="panel-title">${esc(a.display_name)}</h2><span class="muted">${esc(a.title)}</span></div>${chip(a.status, AG_ST[a.status])}</div>

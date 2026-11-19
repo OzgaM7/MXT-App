@@ -458,6 +458,8 @@ public/                   aplikacja: index.html, app.css, app.js, modules.js, bi
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
 public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
                           ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
+public/app.css (:root)    kolory z logo: czerń (przyciski główne, aktywne zakładki), czerwień MXT #da141e (akcenty, linki),
+                          złoto MXT Ubezpieczenia (oznaczenia administratora, tryb testowy); ikony PWA w public/icons
 test/haslo.js             testy wymuszonej zmiany hasła i resetu
 test/smoke.js             testy logowania, ról i etapu 1 (npm test)
 test/etap2.js             testy etapu 2, w tym tryb rzeczywisty na atrapie API Anthropic
