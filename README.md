@@ -455,6 +455,9 @@ db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje,
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
 public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, logo, ikony, manifest PWA, service worker
+public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
+public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
+                          ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
 test/haslo.js             testy wymuszonej zmiany hasła i resetu
 test/smoke.js             testy logowania, ról i etapu 1 (npm test)
 test/etap2.js             testy etapu 2, w tym tryb rzeczywisty na atrapie API Anthropic

@@ -27,16 +27,19 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', c => b
   const P1 = 5100 + Math.floor(Math.random() * 300), base = 'http://localhost:' + P1;
   const env = { AI_MODE: 'test', JOBS_POLL_MS: '200', SCHEDULER_TICK_MS: '300', SMTP_HOST: 'localhost', SMTP_PORT: String(SP), SMTP_FROM: 'MXT <biuro@mxt.test>',
     N8N_ALLOWED_HOSTS: 'localhost', LANGFUSE_HOST: 'http://localhost:' + MP, LANGFUSE_PUBLIC_KEY: 'pk-lf-test', LANGFUSE_SECRET_KEY: 'sk-lf-test', APP_URL: 'https://mxt.example' };
+  const t0 = (await pool.query('SELECT now() AS t')).rows[0].t;
+  const savedDaily = (await pool.query(`SELECT value FROM system_settings WHERE key = 'daily_report'`)).rows[0].value;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const savedRun = (await pool.query(`SELECT * FROM scheduled_runs WHERE job = 'raport_dzienny' AND run_date = $1`, [today])).rows[0];
+  // Raport dzienny włączony w bazie (np. po ręcznych testach) nie może uruchomić się sam przy starcie serwera testowego;
+  // test włącza go niżej, a ustawienie wraca do zapisanego w finally.
+  await pool.query(`UPDATE system_settings SET value = $1 WHERE key = 'daily_report'`, [JSON.stringify({ ...savedDaily, enabled: false })]);
   const s1 = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: P1, ...env }, stdio: ['ignore', 'ignore', 'inherit'] });
 
   const mk = b => async (p, body, cookie, method, headers = {}) => { const r = await fetch(b + '/api/' + p, { method: method || (body ? 'POST' : 'GET'),
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
     return { s: r.status, j: await r.json().catch(() => ({})), c: (r.headers.get('set-cookie') || '').split(';')[0] }; };
   const call = mk(base);
-  const t0 = (await pool.query('SELECT now() AS t')).rows[0].t;
-  const savedDaily = (await pool.query(`SELECT value FROM system_settings WHERE key = 'daily_report'`)).rows[0].value;
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const savedRun = (await pool.query(`SELECT * FROM scheduled_runs WHERE job = 'raport_dzienny' AND run_date = $1`, [today])).rows[0];
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
   try {
     for (let i = 0; i < 60; i++) { try { await fetch(base + '/api/health'); break; } catch (e) { await sleep(100); } }

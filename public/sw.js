@@ -1,7 +1,7 @@
 // Service worker MXT: zapamiętuje pliki aplikacji, żeby działała jak zainstalowana (PWA).
 // Zapytania /api/* zawsze idą do serwera (bez cache).
-const CACHE = 'mxt-v6';
-const SHELL = ['/', '/app.css', '/app.js', '/modules.js', '/biznes.js', '/dzial1.js', '/dzial2.js', '/szkolenia.js', '/etap4.js', '/logo.png', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'mxt-v7';
+const SHELL = ['/', '/app.css', '/app.js', '/modules.js', '/biznes.js', '/dzial1.js', '/dzial2.js', '/szkolenia.js', '/etap4.js', '/logo.png', '/logos/podzielniki.png', '/logos/express-parts.png', '/logos/ubezpieczenia.png', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

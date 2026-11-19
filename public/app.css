@@ -66,9 +66,11 @@ img { max-width: 100%; }
 
 /* ---------- logo ---------- */
 .logo { display: block; height: auto; margin-inline: auto; }
-.logo-xl { width: min(300px, 70vw); }
-.logo-lg { width: min(220px, 60vw); }
-.logo-md { width: 150px; }
+/* logo.png to dwa znaki MXT obok siebie (ok. 3,65 : 1), więc są szersze niż dawny znak */
+.logo-xl { width: min(480px, 88vw); }
+.logo-lg { width: min(380px, 86vw); }
+.logo-md { width: min(260px, 72vw); }
+.logo.logo-dept { width: min(200px, 56vw); }   /* logo działu w nagłówku jego strony */
 [data-screen="start"] .logo { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .55; } }
 
@@ -148,37 +150,42 @@ img { max-width: 100%; }
 .eyebrow { margin: 20px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
 .eyebrow + .page-title { margin-top: 0; }
 
-/* ---------- kafelki działów ---------- */
+/* ---------- kafelki działów (logo działu + nazwa) ---------- */
+/* Kolor akcentu kafelka z logo działu: czerwień MXT, złoto MXT Ubezpieczenia, czerwień Express Parts.
+   --tc: obramowanie i podkreślenie; --tt: tekst „Otwórz dział” (kontrast min. 4,5:1 na białym). */
+.tile[data-dept="podzielniki-i-montaze"] { --tc: #da141e; --tt: #b8101a; }
+.tile[data-dept="sprzedaz-czesci-i-eksport"] { --tc: #db0008; --tt: #b80007; }
+.tile[data-dept="ubezpieczenia"] { --tc: #b59542; --tt: #7d6424; }
 .tiles { width: 100%; display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 760px) { .tiles { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
 .tile {
-  font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+  font: inherit; color: var(--ink); text-align: center; cursor: pointer;
   background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-  padding: 22px; min-height: 120px; min-width: 0;
-  display: flex; align-items: center; gap: 18px;
-  box-shadow: var(--shadow);
+  padding: 18px 18px 16px; min-width: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 14px;
+  box-shadow: var(--shadow); position: relative; overflow: hidden;
   transition: transform .2s var(--ease), border-color .2s, box-shadow .2s;
   animation: screen-in .5s var(--ease) both;
 }
+.tile::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--tc, var(--accent)); opacity: .9; }
 .tile:nth-child(2) { animation-delay: .06s; }
 .tile:nth-child(3) { animation-delay: .12s; }
+.tile-logo { height: 84px; display: flex; align-items: center; justify-content: center; padding: 4px 8px 0; }
+.tile-logo img { display: block; width: auto; height: auto; max-width: min(100%, 230px); max-height: 100%; }
+.tile-body { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.tile-name { font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-wrap: balance; }
+.tile-go { font-size: 13px; font-weight: 600; color: var(--tt, var(--accent)); }
 @media (min-width: 760px) {
-  .tile { flex-direction: column; align-items: flex-start; justify-content: space-between; min-height: 190px; padding: 26px; }
-  .tile-body { flex: none; }
+  .tile { padding: 26px 22px 20px; gap: 18px; }
+  .tile-logo { height: 112px; }
+  .tile-logo img { max-width: 100%; }
 }
-.tile:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 14px 32px rgba(16, 14, 120, .12); }
+@media (hover: hover) {   /* na ekranach dotykowych bez „przyklejonego” podświetlenia po stuknięciu */
+  .tile:hover { transform: translateY(-3px); border-color: var(--tc, var(--accent)); box-shadow: 0 14px 32px rgba(26, 26, 26, .12); }
+  .tile:hover .tile-go { text-decoration: underline; text-underline-offset: 3px; }
+}
 .tile:active { transform: scale(.985); }
-.tile:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 3px; border-color: var(--accent); }
-.tile-icon {
-  flex: none; width: 56px; height: 56px; border-radius: 14px;
-  display: grid; place-items: center;
-  background: var(--accent-soft); color: var(--accent);
-}
-.tile-icon svg { width: 28px; height: 28px; }
-.tile-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
-.tile-name { font-size: 19px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-wrap: balance; }
-.tile-go { font-size: 13px; font-weight: 600; color: var(--accent); }
-.tile:hover .tile-go { text-decoration: underline; text-underline-offset: 3px; }
+.tile:focus-visible { outline: 3px solid color-mix(in srgb, var(--tc, var(--accent)) 30%, transparent); outline-offset: 3px; border-color: var(--tc, var(--accent)); }
 
 /* ---------- pusta strona działu ---------- */
 .empty {

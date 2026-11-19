@@ -35,13 +35,13 @@
 
     <!-- Ładowanie (sprawdzanie sesji) -->
     <section class="screen screen-center" data-screen="start">
-      <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+      <img class="logo logo-lg" src="/logo.png" alt="MXT" width="1000" height="274">
     </section>
 
     <!-- Logowanie -->
     <section class="screen screen-center" data-screen="login" hidden>
       <div class="stack">
-        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="1000" height="274">
         <form class="card login" id="login-form" novalidate>
           <h1 class="visually-hidden">Logowanie do MXT</h1>
           <div class="field">
@@ -61,7 +61,7 @@
     <!-- Zmiana hasła (wymagana przy pierwszym logowaniu) -->
     <section class="screen screen-center" data-screen="password" hidden>
       <div class="stack">
-        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-lg" src="/logo.png" alt="MXT" width="1000" height="274">
         <form class="card login" id="pw-form" novalidate>
           <h1 class="pw-title" id="pw-title">Ustaw własne hasło</h1>
           <p class="pw-lead" id="pw-lead"></p>
@@ -88,7 +88,7 @@
     <!-- Powitanie -->
     <section class="screen screen-center" data-screen="welcome" hidden>
       <div class="stack welcome">
-        <img class="logo logo-xl" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-xl" src="/logo.png" alt="MXT" width="1000" height="274">
         <h1 class="welcome-title" id="welcome-title"></h1>
         <div class="progress" aria-hidden="true"><i id="welcome-progress"></i></div>
         <button type="button" class="btn btn-primary" id="welcome-next">Dalej</button>
@@ -98,7 +98,7 @@
     <!-- Wybór działu -->
     <section class="screen" data-screen="departments" hidden>
       <div class="page">
-        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-md" src="/logo.png" alt="MXT" width="1000" height="274">
         <h1 class="page-title">Wybierz dział</h1>
         <div class="tiles" id="tiles"></div>
         <button type="button" class="btn btn-command" id="open-command">
@@ -111,7 +111,7 @@
     <!-- Strona działu -->
     <section class="screen" data-screen="department" hidden>
       <div class="page">
-        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-md" id="dept-logo" src="/logo.png" alt="MXT" width="1000" height="274">
         <p class="eyebrow">Dział</p>
         <h1 class="page-title" id="dept-title"></h1>
         <div class="empty">
@@ -124,7 +124,7 @@
     <!-- Moduły MXT Business OS (public/modules.js) -->
     <section class="screen" data-screen="module" hidden>
       <div class="page page-wide">
-        <img class="logo logo-md" src="/logo.png" alt="MXT" width="282" height="89">
+        <img class="logo logo-md" id="module-logo" src="/logo.png" alt="MXT" width="1000" height="274">
         <div id="module-root" class="module-root"></div>
       </div>
     </section>

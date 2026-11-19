@@ -1,13 +1,12 @@
 'use strict';
 (() => {
+  // Każdy dział ma własne logo (public/logos): kafelek wyboru, nagłówek strony działu i dokumenty PDF.
   const DEPARTMENTS = [
-    { slug: 'podzielniki-i-montaze', name: 'Podzielniki i Montaże',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><rect x="9" y="6" width="6" height="4" rx="1"/><path d="M12 13v5M9.5 15.5h5"/></svg>' },
-    { slug: 'sprzedaz-czesci-i-eksport', name: 'Sprzedaż części i eksport',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>' },
-    { slug: 'ubezpieczenia', name: 'Ubezpieczenia',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 4.5 5.6v5.9c0 4.6 3.1 8.4 7.5 9.7 4.4-1.3 7.5-5.1 7.5-9.7V5.6L12 2.8Z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/></svg>' }
+    { slug: 'podzielniki-i-montaze', name: 'Podzielniki i Montaże', logo: { src: '/logos/podzielniki.png', w: 640, h: 252, alt: 'MXT Ciepłomierze i podzielniki' } },
+    { slug: 'sprzedaz-czesci-i-eksport', name: 'Sprzedaż części i eksport', logo: { src: '/logos/express-parts.png', w: 640, h: 270, alt: 'Express Parts – części z dowozem' } },
+    { slug: 'ubezpieczenia', name: 'Ubezpieczenia', logo: { src: '/logos/ubezpieczenia.png', w: 640, h: 253, alt: 'MXT Ubezpieczenia' } }
   ];
+  const MAIN_LOGO = { src: '/logo.png', w: 1000, h: 274, alt: 'MXT' };
   const WELCOME_MS = 2500;
   const $ = s => document.querySelector(s);
   let user = null, welcomeTimer = null, current = null;
@@ -63,6 +62,9 @@
     const m = p.match(/^\/dzial\/([a-z-]+)$/);
     const d = m && DEPARTMENTS.find(x => x.slug === m[1]);
     const mod = window.MXT_MODULES && window.MXT_MODULES.routes[p];
+    // Na stronach działu w nagłówku logo tego działu, poza nimi – wspólne logo MXT.
+    setLogo($('#module-logo'), d ? d.logo : MAIN_LOGO);
+    setLogo($('#dept-logo'), d ? d.logo : MAIN_LOGO);
     if (mod) {
       document.title = 'MXT · ' + mod.title;
       show('module');
@@ -92,12 +94,20 @@
     welcomeTimer = setTimeout(() => go('/dzialy', true), WELCOME_MS + 200);
   }
 
+  function setLogo(img, l) {
+    if (!img || img.getAttribute('src') === l.src) return;
+    img.src = l.src; img.width = l.w; img.height = l.h; img.alt = l.alt;
+    img.classList.toggle('logo-dept', l !== MAIN_LOGO);
+  }
+
   function renderTiles() {
     const box = $('#tiles');
     box.replaceChildren(...DEPARTMENTS.map(d => {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'tile';
-      b.innerHTML = `<span class="tile-icon" aria-hidden="true">${d.icon}</span><span class="tile-body"><span class="tile-name"></span><span class="tile-go">Otwórz dział →</span></span>`;
+      b.type = 'button'; b.className = 'tile'; b.dataset.dept = d.slug;
+      b.innerHTML = `<span class="tile-logo"><img alt="" decoding="async"></span><span class="tile-body"><span class="tile-name"></span><span class="tile-go">Otwórz dział →</span></span>`;
+      const img = b.querySelector('img');
+      img.src = d.logo.src; img.width = d.logo.w; img.height = d.logo.h; img.alt = d.logo.alt;
       b.querySelector('.tile-name').textContent = d.name;
       b.addEventListener('click', () => go('/dzial/' + d.slug));
       return b;
