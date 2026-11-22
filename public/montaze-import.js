@@ -52,7 +52,7 @@
       <p>Wybierz umowę, zlecenie albo harmonogram – <b>PDF, skan lub zdjęcie</b>. ${av.ai
         ? 'Dane (zamawiający, terminy, liczba urządzeń, stawki, kary) zostaną odczytane automatycznie i pokazane w formularzu do sprawdzenia.'
         : 'Po wczytaniu przepiszesz dane (zamawiający, terminy, liczba urządzeń, stawki, kary) do formularza – dokument otworzysz przyciskiem „Otwórz dokument”.'} Nic nie zapisze się bez Twojego zatwierdzenia.</p>
-      ${av.ai ? '' : `<p class="notice">Automatyczny odczyt jest wyłączony${U().has('ai.settings') ? ' – włącza go klucz ANTHROPIC_API_KEY w ustawieniach serwera (Render → Environment)' : ''}.</p>`}
+      ${av.ai ? '' : `<p class="notice">Automatyczny odczyt jest wyłączony${U().has('ai.settings') && av.przyczyna ? ' – ' + esc(av.przyczyna) : ''}.</p>`}
       ${field('d-f', 'Dokument (PDF, JPG lub PNG, do 10 MB)', '<input id="d-f" name="plik" type="file" accept=".pdf,application/pdf,image/jpeg,image/png" required>')}
       <p class="muted small">${av.ai ? 'Odczyt trwa zwykle do minuty. ' : ''}Dokument zostanie dołączony do kontraktu.</p>`,
     { submit: 'Wczytaj dokument', onSubmit: async f => {

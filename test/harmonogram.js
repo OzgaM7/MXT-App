@@ -122,7 +122,7 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     r = await call('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'harmonogram zadanie 8.pdf' }, A);
     ok(r.s === 201 && r.j.tryb === 'reczny' && r.j.uwaga.includes('DOC_AI') && r.j.propozycja === null, 'bez AI: formularz ręczny z wyjaśnieniem');
     const imp1 = r.j.id;
-    const av = await call('d1/import/dokument/dostepnosc', null, A); ok(av.s === 200 && av.j.ai === false && av.j.powod.includes('ANTHROPIC_API_KEY'), 'dostępność: odczyt automatyczny wyłączony (okno mówi to z góry)');
+    const av = await call('d1/import/dokument/dostepnosc', null, A); ok(av.s === 200 && av.j.ai === false && av.j.powod.includes('ANTHROPIC_API_KEY') && av.j.przyczyna.includes('ANTHROPIC_API_KEY i DOC_AI=live'), 'dostępność: odczyt wyłączony, z informacją, czego brakuje');
     r = await call(`d1/import/dokument/${imp1}/plik`, null, A); ok((await r.buf()).subarray(0, 5).toString() === '%PDF-', 'podgląd dokumentu');
     const png = fs.readFileSync(path.join(__dirname, '..', 'public', 'icons', 'icon-192.png'));
     r = await call('d1/import/dokument', { plik: png.toString('base64'), nazwa: 'zdjecie umowy.png' }, A);

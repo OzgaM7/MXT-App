@@ -106,6 +106,10 @@ Aplikacja potrzebuje serwera Node.js i bazy PostgreSQL. Do działania online wys
 1. Wgraj folder projektu do repozytorium na GitHubie (bez `node_modules` i `.env`).
 2. Na render.com: **New → Blueprint**. Wskaż repozytorium. Render odczyta `render.yaml` i utworzy aplikację oraz bazę PostgreSQL.
 3. Po pierwszym wdrożeniu ustaw `APP_URL`, np. `https://mxt.onrender.com`. Opcjonalnie ustaw `ANTHROPIC_API_KEY` i `AI_MODE=live` (agenci na Claude) oraz `SMTP_HOST`, `SMTP_FROM` (poczta).
+   **Odczyt umów przez AI** („Wczytaj z umowy / harmonogramu”) – sam klucz wystarczy, agenci zostają w trybie testowym:
+   - console.anthropic.com: **Billing** – doładuj środki; **Settings → Limits** – ustaw miesięczny limit wydatków; **Settings → API Keys → Create Key** – skopiuj klucz (pokazuje się raz).
+   - Render → usługa **mxt** → **Environment**: `ANTHROPIC_API_KEY` = klucz, sprawdź `DOC_AI` = `live` (dodaj, jeśli brak) → **Save, rebuild, and deploy**.
+   - Po wdrożeniu okno „Wczytaj z umowy / harmonogramu” nie pokazuje już „Automatyczny odczyt jest wyłączony”; jeśli pokazuje, administrator widzi w nim, czego brakuje. Koszt każdego odczytu (tokeny i USD) jest w Security & Audit → Rejestr operacji (`montaz.odczyt_dokumentu`).
 4. Zaloguj się kontem `m.ozga` z hasłem `1234`. Aplikacja wymusi ustawienie własnego hasła. Każdy pracownik zrobi to samo przy pierwszym logowaniu.
 
 Plan darmowy Render usypia aplikację po okresie bezczynności, a darmowa baza ma ograniczony czas życia. Do pracy firmy wybierz plan płatny albo zewnętrzną bazę (np. Supabase: `DATABASE_URL` + `DATABASE_SSL=1`).
