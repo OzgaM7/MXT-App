@@ -737,3 +737,21 @@ img { max-width: 100%; }
   .userbar-name { max-width: 34vw; }
   .userbar .btn-ghost { padding-left: 9px; padding-right: 9px; }
 }
+
+/* ---------- odczyty ---------- */
+.subform { border-left: 3px solid var(--line); padding: 2px 0 2px 12px; margin: 0 0 12px; }
+.subform[hidden] { display: none; }
+.td-actions { text-align: right; }
+.td-actions .btn + .btn { margin-left: 6px; }
+/* Tabela jako karty na telefonie (etykiety kolumn z data-label) */
+@media (max-width: 640px) {
+  .table-cards thead { display: none; }
+  .table-cards, .table-cards tbody, .table-cards tr, .table-cards td { display: block; width: 100%; }
+  .table-cards tr { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+  .table-cards td { border: 0; padding: 4px 0; }
+  .table-cards td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .table-cards td:first-child::before { display: none; }
+  .table-cards td:first-child .linkish { font-size: 17px; }
+  .table-cards .td-actions { text-align: left; padding-top: 8px; }
+  .table-cards .td-actions .btn { min-height: 44px; }
+}

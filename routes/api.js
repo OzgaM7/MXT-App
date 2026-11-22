@@ -244,6 +244,8 @@ r.use('/powiadomienia', require('./powiadomienia'));
 r.use('/serwisy', require('./serwisy').office);
 r.use('/moje/serwisy', require('./serwisy').own);
 r.use('/moje', require('./teren'));
+// Odczyty: terminy i wykonanie (role biurowe i „Obsługa odczytów”).
+r.use('/odczyty', require('./odczyty'));
 // Eksport do Excela (XLSX) – zestawienia działu Podzielniki i Montaże.
 r.use('/eksport', require('./eksport'));
 

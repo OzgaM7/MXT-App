@@ -130,8 +130,10 @@
     bell.refresh();
   }
   const can = p => !!user && (user.permissions || []).includes(p);
-  // Ekran startowy zależy od roli: biuro – wybór działu, monter – „Moje montaże”, serwisant – „Moje serwisy”, pozostali – powiadomienia.
-  const homePath = () => can('departments.view') ? '/dzialy' : can('field.own') ? '/moje-montaze' : can('service.own') ? '/moje-serwisy' : '/powiadomienia';
+  // Ekran startowy zależy od roli: biuro – wybór działu, monter – „Moje montaże”, serwisant – „Moje serwisy”,
+  // obsługa odczytów – „Odczyty”, pozostali – powiadomienia.
+  const homePath = () => can('departments.view') ? '/dzialy' : can('field.own') ? '/moje-montaze' : can('service.own') ? '/moje-serwisy'
+    : can('readings.manage') ? '/odczyty' : '/powiadomienia';
 
   // ---------- dzwonek: licznik nieprzeczytanych powiadomień ----------
   const bell = {

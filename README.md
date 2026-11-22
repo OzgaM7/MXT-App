@@ -26,7 +26,7 @@ Podstawa pod duże montaże, aplikację montera, serwisy i odczyty. Migracja `db
 
 - **Konta i role** (moduł „Konta i role”, tylko administrator):
   - zakładanie kont pracowników z hasłem tymczasowym (zmiana przy pierwszym logowaniu);
-  - role: Administrator, Pracownik biura, Kierownik, Osoba rozliczająca, Monter, Serwisant. Konto ma rolę główną i może mieć role dodatkowe – uprawnienia się sumują (`lib/rbac.js`);
+  - role: Administrator, Pracownik biura, Kierownik, Osoba rozliczająca, Monter, Serwisant, Obsługa odczytów. Konto ma rolę główną i może mieć role dodatkowe – uprawnienia się sumują (`lib/rbac.js`);
   - kont się nie usuwa: wyłączone konto nie loguje się, jest wylogowane ze wszystkich urządzeń, a jego wpisy zostają;
   - nie można wyłączyć własnego konta ani zmienić własnej roli; musi zostać co najmniej jeden aktywny administrator;
   - role nadane przez administratora nie są nadpisywane przy ponownym wdrożeniu (migracja 003 ustawia role startowe tylko przy pierwszej instalacji).
@@ -65,6 +65,20 @@ Osobny proces, niezależny od dużych montaży. Migracja `db/011_d1_serwisy.sql`
 - **Eksport do Excela:** zestawienie serwisów z terminami, informacją „przydział w terminie”, flagami i liczbą zdjęć.
 - **Uwaga (hosting):** na darmowym planie Render aplikacja usypia się po ok. 15 min bez ruchu – wtedy przypomnienia czekają do jej wybudzenia. Na płatnym planie działają na bieżąco.
 - **Testy:** `test/serwisy.js`, 96 sprawdzeń, w ramach `npm test`.
+
+## Odczyty (dział Podzielniki i Montaże)
+
+Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w programie do odczytów / Excelu). Migracja `db/012_d1_odczyty.sql`, logika `lib/readings.js`, API `routes/odczyty.js`, interfejs `public/odczyty.js`.
+
+- **Gdzie:** zakładka „Odczyty” w dziale oraz moduł „Odczyty” w menu. Rola **„Obsługa odczytów”** widzi tylko ten moduł (obiekty, klienci, terminy, wykonanie) – bez finansów, CRM i innych modułów.
+- **Obiekt = budynek z ewidencji** (ta sama tabela co montaże i serwisy), **klient = klient z CRM**. Nowy budynek lub klient dodany z poziomu odczytów trafia do wspólnej ewidencji – dane wprowadza się raz.
+- **Na obiekt:** zakres (podzielniki, wodomierze, ciepłomierze, wszystkie, inne – jeden budynek może mieć kilka harmonogramów), sposób odczytu (radiowy, wizualny, zdalny), cykl w miesiącach, kolejny termin, data ostatniego odczytu, osoba odpowiedzialna, własne wyprzedzenie przypomnienia, kontakt na miejscu, dostęp (klucze, kod do bramy), uwagi; w karcie także liczba lokali i zamontowanych urządzeń.
+- **„Wykonano” jednym działaniem:** data odczytu (domyślnie dziś), kto wykonał, wynik pełny / częściowy (liczba lokali bez odczytu, uwagi) i **kolejny termin wyliczony z cyklu** (można go zmienić). Wpis trafia do historii obiektu.
+- **Cofnięcie pomyłki** (administrator, kierownik): ostatni wpis zostaje w historii jako cofnięty z powodem, a termin wraca do poprzedniego.
+- **Przypomnienia:** domyślnie 14 dni przed terminem (ustawienie „Przypomnienia” – administrator/kierownik – albo pole przy obiekcie), w dniu terminu i po terminie (wtedy także do kierownika). Odbiorca: osoba odpowiedzialna, a bez niej – zespół odczytów. Każde przypomnienie przychodzi raz na termin; po wykonaniu i nowym terminie cykl zaczyna się od nowa.
+- **Widoki i kafelki:** po terminie, w ciągu 7 i 30 dni, bez osoby odpowiedzialnej, wykonane w tym miesiącu, obiekty aktywne; filtry: osoba, zakres, wyszukiwanie. Na telefonie lista jest w formie kart.
+- **Eksport do Excela** (także dla obsługi odczytów): arkusz „Odczyty” (harmonogram z terminami i statusem) i „Historia” (wykonane odczyty, kto, wynik).
+- **Testy:** `test/odczyty.js`, 65 sprawdzeń, w ramach `npm test`.
 
 ## Wdrożenie online
 
@@ -487,6 +501,8 @@ routes/teren.js           API „Moje montaże” (monter: tylko montaże własn
 routes/eksport.js         eksport zestawień działu 1 do Excela (XLSX)
 routes/serwisy.js         API zleceń serwisowych: biuro (/api/serwisy) i serwisant (/api/moje/serwisy)
 lib/service.js            zlecenia serwisowe: statusy, terminy, flagi, przypomnienia, zdjęcia, protokół z podpisem
+routes/odczyty.js         API odczytów (obiekty, terminy, wykonanie, cofnięcie, ustawienia, eksport)
+lib/readings.js           odczyty: zakresy, flagi terminów, przypomnienia z wyprzedzeniem
 lib/notify.js, lib/scope.js, lib/xlsx.js   powiadomienia (w aplikacji, push, e-mail), zasięg danych montera, budowa plików XLSX
 routes/biznes.js          API: CRM, finanse, kursy NBP, oferty, sprzedaż, reklamacje, dokumenty eksportowe, Knowledge Base
 routes/szkolenia.js       API Platformy Szkoleniowej
@@ -507,7 +523,7 @@ db/007_etap3_…sql         etap 3: platforma szkoleniowa
 db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje, tokeny, oceny agentów
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
-public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), logo, ikony, manifest PWA, service worker (cache + push)
+public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), odczyty.js (odczyty), logo, ikony, manifest PWA, service worker (cache + push)
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
 public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
                           ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
@@ -520,6 +536,7 @@ test/etap3.js             testy etapu 3 (działy, CRM, finanse, KB, szkolenia; a
 test/etap4.js             testy etapu 4 (lokalny SMTP, atrapy n8n i Langfuse)
 test/fundament.js         testy rozbudowy działu 1, etap 1 (konta, zasięg montera, powiadomienia, push, anulowanie finansów, eksport XLSX)
 test/serwisy.js           testy zleceń serwisowych (termin 14 dni, przydział, zasięg serwisanta, zdjęcia, protokół z podpisem, przypomnienia)
+test/odczyty.js           testy odczytów (rola obsługi odczytów, wykonanie z kolejnym terminem, cofnięcie, przypomnienia, eksport)
 ```
 
 ## Konta startowe

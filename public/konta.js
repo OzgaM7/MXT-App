@@ -12,7 +12,8 @@
     kierownik: 'jak biuro; od etapu 2 – projekty, harmonogramy, zatwierdzanie rozliczeń',
     rozliczajacy: 'jak biuro; od etapu 2 – rozliczenia prac i materiałów',
     monter: 'tylko „Moje montaże” własnej ekipy, bez finansów',
-    serwisant: 'tylko „Moje serwisy” – zlecenia przypisane do niego: status, zdjęcia, protokół z podpisem'
+    serwisant: 'tylko „Moje serwisy” – zlecenia przypisane do niego: status, zdjęcia, protokół z podpisem',
+    odczyty: 'tylko „Odczyty” – obiekty, klienci, terminy i wykonanie odczytów, bez finansów'
   };
   async function accountsPage(root, path, alive) {
     const body = U().frame(root, path, 'Konta i role', 'Konta pracowników: role, powiązanie z instalatorem, wyłączanie kont i reset hasła.',
@@ -54,7 +55,7 @@
   }
   function accountForm(a, M, inst, after) {
     const isNew = !a, self = a && a.id === U().me().id, d = a || { role: 'monter', extra_roles: [], is_active: true };
-    const extras = ['uzytkownik', 'kierownik', 'rozliczajacy', 'monter', 'serwisant'];
+    const extras = ['uzytkownik', 'kierownik', 'rozliczajacy', 'monter', 'serwisant', 'odczyty'];
     const free = inst.filter(i => i.is_active && (!i.user_id || (a && i.user_id === a.id)));
     modal(isNew ? 'Nowe konto pracownika' : 'Konto ' + a.login, `
       ${isNew ? field('a-login', 'Login (do logowania)', '<input id="a-login" name="login" required maxlength="64" autocapitalize="none" autocomplete="off" placeholder="np. j.kowalski">') : ''}
@@ -88,7 +89,8 @@
   const KIND = { 'montaz.przydzial': 'Przydział', 'montaz.zmiana_terminu': 'Zmiana terminu', 'montaz.odwolanie': 'Przekazanie', 'montaz.anulowanie': 'Anulowanie',
     'ekipa.przydzial': 'Ekipa', test: 'Test', 'serwis.przydzial': 'Serwis – przydział', 'serwis.odwolanie': 'Serwis – przekazanie', 'serwis.zmiana_terminu': 'Serwis – termin',
     'serwis.anulowanie': 'Serwis – anulowanie', 'serwis.pilne': 'Serwis – pilne', 'serwis.do_poprawy': 'Serwis – poprawka', 'serwis.termin_przydzialu': 'Termin przydziału',
-    'serwis.termin_realizacji': 'Termin realizacji', 'serwis.po_terminie': 'Po terminie', 'serwis.ponowna_wizyta': 'Ponowna wizyta', 'serwis.do_zatwierdzenia': 'Do zatwierdzenia' };
+    'serwis.termin_realizacji': 'Termin realizacji', 'serwis.po_terminie': 'Po terminie', 'serwis.ponowna_wizyta': 'Ponowna wizyta', 'serwis.do_zatwierdzenia': 'Do zatwierdzenia',
+    'odczyt.termin': 'Odczyt – termin', 'odczyt.po_terminie': 'Odczyt po terminie', 'odczyt.przydzial': 'Odczyty – przydział' };
   const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
   const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
