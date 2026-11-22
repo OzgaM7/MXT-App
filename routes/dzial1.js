@@ -301,7 +301,8 @@ r.get('/kontrakty', use, wrap(async (req, res) => {
       coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.project_id = x.id AND f.kind = 'przychod' AND f.paid_at IS NOT NULL), 0)::float AS zaplacono,
       coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.project_id = x.id AND f.kind = 'koszt'), 0)::float AS koszt,
       (SELECT count(*)::int FROM installations i WHERE i.project_id = x.id) AS installations,
-      (SELECT count(*)::int FROM installations i WHERE i.project_id = x.id AND i.status = 'odebrany') AS installations_done
+      (SELECT count(*)::int FROM installations i WHERE i.project_id = x.id AND i.status = 'odebrany') AS installations_done,
+      (SELECT d.id FROM documents d WHERE d.related_type = 'project' AND d.related_id = x.id AND d.kind = 'inny' ORDER BY d.created_at LIMIT 1) AS document_id
     FROM projects x LEFT JOIN customers c ON c.id = x.customer_id WHERE x.department_id = $1 ORDER BY x.created_at DESC LIMIT 300`, [DEP]);
   res.json(q.rows.map(x => ({ ...x, do_zafakturowania: Math.max(0, Math.round((x.value_net - x.zafakturowano) * 100) / 100), marza: Math.round((x.zafakturowano - x.koszt) * 100) / 100 })));
 }));
@@ -349,6 +350,8 @@ r.get('/podsumowanie', use, wrap(async (req, res) => {
     (SELECT count(*)::int FROM devices WHERE status = 'zamontowane') AS urzadzenia,
     (SELECT count(*)::int FROM installations WHERE status IN ('zaplanowany','w_toku') AND planned_date BETWEEN current_date AND current_date + 14) AS montaze_14d,
     (SELECT count(*)::int FROM installations WHERE status = 'wykonany') AS do_odbioru,
+    (SELECT count(*)::int FROM installations WHERE status IN ('zaplanowany','w_toku') AND planned_date <= current_date AND coalesce(planned_end, planned_date) >= current_date) AS trwajace,
+    (SELECT count(*)::int FROM installations WHERE status IN ('zaplanowany','w_toku') AND crew_id IS NULL AND coalesce(planned_end, planned_date) >= current_date) AS bez_ekipy,
     (SELECT count(*)::int FROM complaints WHERE department_id = $1 AND status NOT IN ('rozwiazana','odrzucona')) AS reklamacje_otwarte,
     (SELECT count(*)::int FROM crews WHERE is_active) AS ekipy`, [DEP]);
   res.json(q.rows[0]);

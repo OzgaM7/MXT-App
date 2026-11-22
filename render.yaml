@@ -20,6 +20,9 @@ services:
         value: "1"
       - key: AI_MODE
         value: test
+      # Odczyt umów i harmonogramów (Wczytaj z umowy / harmonogramu) działa po dodaniu ANTHROPIC_API_KEY – agenci zostają w trybie testowym.
+      - key: DOC_AI
+        value: live
       - key: MXT_SECRET_KEY
         generateValue: true
       - key: APP_URL

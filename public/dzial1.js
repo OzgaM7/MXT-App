@@ -6,13 +6,15 @@
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
   const pln = n => B().pln(n), table = (...a) => B().table(...a), opts = (...a) => B().opts(...a);
   const DEP = 'podzielniki-i-montaze', PATH = '/dzial/' + DEP;
-  const TABS = [['budynki', 'Budynki i wspólnoty'], ['urzadzenia', 'Urządzenia'], ['harmonogram', 'Harmonogram montaży'], ['serwisy', 'Serwisy'], ['odczyty', 'Odczyty'], ['ekipy', 'Ekipy i instalatorzy'],
-    ['reklamacje', 'Reklamacje'], ['rozliczenia', 'Rozliczenia kontraktów'], ['rentownosc', 'Rentowność'], ['oferty', 'Oferty']];
+  // Kolejność według codziennej pracy: najpierw harmonogram montaży (ekran startowy działu), potem serwisy i odczyty,
+  // kontrakty, ekipy i reklamacje; ewidencja (budynki, urządzenia) na końcu.
+  const TABS = [['harmonogram', 'Harmonogram montaży'], ['serwisy', 'Serwisy'], ['odczyty', 'Odczyty'], ['rozliczenia', 'Kontrakty i rozliczenia'], ['ekipy', 'Ekipy i instalatorzy'],
+    ['reklamacje', 'Reklamacje'], ['oferty', 'Oferty'], ['rentownosc', 'Rentowność'], ['budynki', 'Budynki i wspólnoty'], ['urzadzenia', 'Urządzenia']];
   const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplomierz: 'Ciepłomierz', modul_radiowy: 'Moduł radiowy', inny: 'Inne' };
   const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
   const KT_ST = { oferta: 'Oferta', w_realizacji: 'W realizacji', zakonczony: 'Zakończony', rozliczony: 'Rozliczony', anulowany: 'Anulowany' };
-  let tab = 'budynki';
+  let tab = 'harmonogram';
   const st = { q: '', devQ: '', devTyp: '', devSt: '', devPage: 1 };
   // Przycisk eksportu do Excela (te same filtry co na ekranie); tylko dla ról z uprawnieniem export.xlsx.
   const xl = (list, params = {}) => U().has('export.xlsx')
@@ -22,14 +24,15 @@
     // Link z powiadomienia może wskazać zakładkę (?tab=serwisy&z=<id>).
     const want = new URLSearchParams(location.search).get('tab');
     if (want && TABS.some(([k]) => k === want)) tab = want;
-    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Budynki, urządzenia, montaże, serwisy, protokoły odbioru, rozliczenia i rentowność.');
+    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Harmonogram montaży, serwisy, odczyty, kontrakty i rozliczenia, ekipy, budynki i urządzenia.');
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
     const serwisy = (...a) => window.MXT_SERWIS.officeTab(...a), odczyty = (...a) => window.MXT_ODCZYTY.tab(...a);
     await ({ budynki, urzadzenia, harmonogram, serwisy, odczyty, ekipy, reklamacje, rozliczenia, rentownosc, oferty }[tab])(panel, reload, alive);
     if (!alive()) return;
     body.replaceChildren(panel);
-    if (['budynki', 'harmonogram'].includes(tab)) await B().agentsStrip(panel, DEP);
+    // Agenci AI działu pod harmonogramem i ewidencją budynków – najważniejsze dane działu zostają na górze.
+    if (['budynki', 'harmonogram'].includes(tab)) await B().agentsStrip(panel, DEP, 'beforeend');
   }
 
   // ---------- budynki ----------
@@ -131,27 +134,43 @@
   // ---------- harmonogram montaży ----------
   const matText = m => (m || []).map(x => `${x.nazwa}; ${x.ilosc}; ${x.jm}`).join('\n');
   const matParse = t => String(t || '').split('\n').map(l => l.split(';').map(s => s.trim())).filter(a => a[0]).map(([nazwa, ilosc, jm]) => ({ nazwa, ilosc: Number(ilosc || 1), jm: jm || 'szt.' }));
+  // Dodaj nowy montaż / Edytuj montaż. Przy nowym montażu budynek można wybrać z ewidencji albo dodać od razu w formularzu.
   async function installationForm(x, reload) {
     const [bs, crews, kt] = await Promise.all([api('d1/budynki'), api('d1/ekipy'), api('d1/kontrakty')]);
+    let newBuilding = null;   // budynek utworzony w tym formularzu (przy kolizji terminu nie tworzy się go drugi raz)
     const submit = async (f, allow) => {
-      const d = { building_id: val(f, 'building_id'), crew_id: val(f, 'crew_id') || null, project_id: val(f, 'project_id') || null, planned_date: val(f, 'planned_date'), planned_end: val(f, 'planned_end') || null,
+      let building = val(f, 'building_id');
+      if (!x && building === '__new') {
+        if (!newBuilding) {
+          if (!val(f, 'nb_name').trim() || !val(f, 'nb_address').trim()) throw new Error('Podaj nazwę i adres nowego budynku.');
+          newBuilding = await api('d1/budynki', { name: val(f, 'nb_name'), address: val(f, 'nb_address'), city: val(f, 'nb_city'), units_count: val(f, 'nb_units') });
+        }
+        building = newBuilding.id;
+      }
+      const d = { building_id: building, crew_id: val(f, 'crew_id') || null, project_id: val(f, 'project_id') || null, planned_date: val(f, 'planned_date'), planned_end: val(f, 'planned_end') || null,
         scope: val(f, 'scope'), devices_planned: val(f, 'devices_planned'), materials: matParse(val(f, 'materials')), notes: val(f, 'notes'), allow_clash: allow };
       if (x) { delete d.building_id; delete d.allow_clash; await api('d1/montaze/' + x.id, d, 'PATCH'); } else await api('d1/montaze', d);
-      toast(x ? 'Montaż zapisany.' : 'Montaż zaplanowany.'); reload();
+      toast(x ? 'Zapisano zmiany montażu.' : 'Dodano montaż do harmonogramu.'); reload();
     };
-    modal(x ? 'Montaż ' + x.number : 'Zaplanuj montaż', `
-      <div class="field-row">${field('i-b', 'Budynek', `<select id="i-b" name="building_id" ${x ? 'disabled' : 'required'}>${opts(bs, x && x.building_id, b => b.name + ', ' + b.address, b => b.id, '– wybierz –')}</select>`)}
+    modal(x ? 'Edytuj montaż ' + x.number : 'Dodaj nowy montaż', `
+      <div class="field-row">${field('i-b', 'Budynek', `<select id="i-b" name="building_id" ${x ? 'disabled' : 'required'}>${x ? opts(bs, x.building_id, b => b.name + ', ' + b.address, b => b.id)
+        : '<option value="">– wybierz –</option><option value="__new">+ Nowy budynek…</option>' + opts(bs, '', b => b.name + ', ' + b.address, b => b.id)}</select>`)}
         ${field('i-k', 'Kontrakt', `<select id="i-k" name="project_id">${opts(kt.filter(k => !['anulowany', 'rozliczony'].includes(k.status)), x && x.project_id, k => k.number + ' – ' + k.title, k => k.id, '– bez kontraktu –')}</select>`)}</div>
+      ${x ? '' : `<div id="i-nb" class="subform" hidden><p class="label-sm">Nowy budynek (trafi do ewidencji budynków)</p>
+        <div class="field-row">${field('i-nbn', 'Nazwa', '<input id="i-nbn" name="nb_name" maxlength="200" placeholder="np. SM Słoneczna, blok 7">')}${field('i-nbu', 'Liczba lokali', '<input id="i-nbu" name="nb_units" type="number" min="0" inputmode="numeric">')}</div>
+        <div class="field-row">${field('i-nba', 'Adres', '<input id="i-nba" name="nb_address" maxlength="300">')}${field('i-nbc', 'Miasto', '<input id="i-nbc" name="nb_city" maxlength="100">')}</div></div>`}
       <div class="field-row">${field('i-c', 'Ekipa', `<select id="i-c" name="crew_id">${opts(crews.filter(c => !c.virtual && c.is_active), x && x.crew_id, c => c.name + (c.leader ? ' (' + c.leader + ')' : ''), c => c.id, '– nieprzydzielona –')}</select>`)}
         ${field('i-d', 'Termin rozpoczęcia', `<input id="i-d" name="planned_date" type="date" required value="${esc(x ? x.planned_date : '')}">`)}${field('i-e', 'Termin zakończenia', `<input id="i-e" name="planned_end" type="date" value="${esc(x && x.planned_end ? x.planned_end : '')}">`)}</div>
       ${field('i-s', 'Zakres prac', `<textarea id="i-s" name="scope" rows="2">${esc(x ? x.scope : '')}</textarea>`)}
       <div class="field-row">${field('i-n', 'Liczba urządzeń do montażu', `<input id="i-n" name="devices_planned" type="number" min="0" value="${esc(x ? x.devices_planned : '')}">`)}</div>
       ${field('i-m', 'Lista materiałowa (jedna pozycja na linię: nazwa; ilość; jm)', `<textarea id="i-m" name="materials" rows="3" placeholder="Podzielnik elektroniczny; 48; szt.&#10;Plomba; 48; szt.">${esc(x ? matText(x.materials) : '')}</textarea>`)}
       ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(x ? x.notes : '')}</textarea>`)}`,
-    { submit: x ? 'Zapisz' : 'Zaplanuj', wide: true, onSubmit: async f => {
+    { submit: x ? 'Zapisz zmiany' : 'Dodaj montaż', wide: true, onSubmit: async f => {
       try { await submit(f, false); }
-      catch (e) { if (/nakładanie/.test(e.message) && !x) { modal('Kolizja terminu ekipy', `<p>${esc(e.message)}</p>`, { submit: 'Zaplanuj mimo to', onSubmit: () => submit(f, true) }); return; } throw e; }
+      catch (e) { if (/nakładanie/.test(e.message) && !x) { modal('Kolizja terminu ekipy', `<p>${esc(e.message)}</p>`, { submit: 'Dodaj mimo to', onSubmit: () => submit(f, true) }); return; } throw e; }
     } });
+    const sel = document.querySelector('#modal-box #i-b');
+    if (sel && !x) sel.addEventListener('change', () => { document.querySelector('#modal-box #i-nb').hidden = sel.value !== '__new'; });
   }
   async function protocolForm(x, reload) {
     const d = await api('d1/montaze/' + x.id);
@@ -165,22 +184,41 @@
       toast('Protokół ' + r.number + ' (wersja ' + r.version + ') gotowy – link „Protokół PDF” przy montażu.'); reload();
     } });
   }
+  const hst = { zakres: 'biezace' };
   async function harmonogram(body, reload, alive) {
     const from = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
-    const list = await api('d1/montaze?od=' + from);
+    // Ekran startowy działu: najważniejsze liczby (montaże, serwisy, odczyty) + harmonogram.
+    const [list, sum, srv, odc] = await Promise.all([api('d1/montaze' + (hst.zakres === 'biezace' ? '?od=' + from : '')), api('d1/podsumowanie'),
+      api('serwisy/podsumowanie').catch(() => null), api('odczyty/podsumowanie').catch(() => null)]);
     if (!alive()) return;
     const byDate = {};
     for (const x of list) (byDate[x.planned_date] = byDate[x.planned_date] || []).push(x);
     const dayName = d => new Date(d + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
-    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="i-new">Zaplanuj montaż</button>${xl('montaze', { od: from })}<span class="muted small">Od ${esc(fd(from))}. Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</span></div>
+    const kpi = (label, v, tone, to) => `<button type="button" class="kpi kpi-${v ? tone : 'neutral'}"${to ? ` data-tab="${to}"` : ' disabled'}><span class="kpi-v">${esc(v)}</span><span class="kpi-l">${esc(label)}</span></button>`;
+    body.innerHTML = `<section class="kpis">
+        ${kpi('Montaże trwające dziś', sum.trwajace, 'blue')}${kpi('Montaże w 14 dni', sum.montaze_14d, 'blue')}
+        ${kpi('Bez przydzielonej ekipy', sum.bez_ekipy, 'warn')}${kpi('Czekają na protokół odbioru', sum.do_odbioru, 'warn')}
+        ${srv ? kpi('Serwisy do przydzielenia' + (srv.po_terminie_przydzialu ? ` (po terminie: ${srv.po_terminie_przydzialu})` : ''), srv.nieprzypisane, srv.po_terminie_przydzialu ? 'danger' : 'warn', 'serwisy') : ''}
+        ${odc ? kpi('Odczyty po terminie', odc.po_terminie, 'danger', 'odczyty') : ''}</section>
+      <div class="toolbar toolbar-main"><button type="button" class="btn btn-primary" id="i-new">Dodaj nowy montaż</button>
+        <button type="button" class="btn btn-secondary" id="i-xls">Importuj z Excela</button>
+        <button type="button" class="btn btn-secondary" id="i-doc">Wczytaj z umowy / harmonogramu</button>${xl('montaze', hst.zakres === 'biezace' ? { od: from } : {})}</div>
+      <div class="seg seg-wrap" role="tablist" aria-label="Zakres harmonogramu">
+        <button type="button" class="seg-b${hst.zakres === 'biezace' ? ' seg-on' : ''}" data-z="biezace" role="tab" aria-selected="${hst.zakres === 'biezace'}">Bieżące (od ${esc(fd(from))})</button>
+        <button type="button" class="seg-b${hst.zakres === 'wszystkie' ? ' seg-on' : ''}" data-z="wszystkie" role="tab" aria-selected="${hst.zakres === 'wszystkie'}">Wszystkie</button></div>
+      <p class="muted small">Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</p>
       ${Object.keys(byDate).length ? Object.entries(byDate).map(([d, xs]) => `<section class="panel day${d === U().today() ? ' day-today' : ''}"><h2 class="panel-title">${esc(dayName(d))}${d === U().today() ? ' · dziś' : ''}</h2>
         <div class="task-list">${xs.map(x => `<div class="task"><div class="task-main"><button type="button" class="task-title linkish" data-ie="${x.id}">${esc(x.number)} · ${esc(x.building_name)}</button>
-          <span class="muted small">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''} · ekipa: ${esc(x.crew_name || 'nieprzydzielona')} · urządzenia: ${esc(x.devices_installed)}/${esc(x.devices_planned)}${x.planned_end && x.planned_end !== x.planned_date ? ' · do ' + esc(fd(x.planned_end)) : ''}${x.project_number ? ' · ' + esc(x.project_number) : ''}</span></div>
-          <div class="task-side">${x.status === 'odebrany' ? `${chip('odebrany', 'Odebrany')} ${B().pdfLink('/api/dokumenty/' + x.protocol_document_id + '/plik', 'Protokół PDF')}`
+          <span class="muted small">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''} · ekipa: ${x.crew_name ? esc(x.crew_name) : '<b class="txt-warn">nieprzydzielona</b>'} · urządzenia: ${esc(x.devices_installed)}/${esc(x.devices_planned)}${x.planned_end && x.planned_end !== x.planned_date ? ' · do ' + esc(fd(x.planned_end)) : ''}${x.project_number ? ' · ' + esc(x.project_number) : ''}</span></div>
+          <div class="task-side"><button type="button" class="btn btn-ghost btn-sm" data-ie="${x.id}">Edytuj</button>${x.status === 'odebrany' ? `${chip('odebrany', 'Odebrany')} ${B().pdfLink('/api/dokumenty/' + x.protocol_document_id + '/plik', 'Protokół PDF')}`
             : `<label class="visually-hidden" for="is-${x.id}">Status</label><select class="status-select st-${esc(x.status)}" id="is-${x.id}" data-is="${x.id}">${Object.entries(INST_ST).filter(([k]) => k !== 'odebrany').map(([k, v]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${v}</option>`).join('')}</select>
               ${x.status === 'wykonany' ? `<button type="button" class="btn btn-primary btn-sm" data-ip="${x.id}">Protokół odbioru</button>` : ''}`}</div></div>`).join('')}</div></section>`).join('')
-      : '<section class="panel"><p class="empty-inline">Brak montaży w harmonogramie. Zaplanuj pierwszy montaż.</p></section>'}`;
+      : `<section class="panel"><p class="empty-inline">Brak montaży ${hst.zakres === 'biezace' ? 'od ' + esc(fd(from)) : 'w harmonogramie'}. Dodaj montaż ręcznie, zaimportuj listę z Excela albo wczytaj umowę lub harmonogram.</p></section>`}`;
     body.querySelector('#i-new').addEventListener('click', () => installationForm(null, reload));
+    body.querySelector('#i-xls').addEventListener('click', () => window.MXT_IMPORT.excel(reload));
+    body.querySelector('#i-doc').addEventListener('click', () => window.MXT_IMPORT.document(reload));
+    body.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => { hst.zakres = b.dataset.z; reload(); }));
+    body.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; reload(); }));
     body.querySelectorAll('[data-ie]').forEach(b => b.addEventListener('click', async () => installationForm(await api('d1/montaze/' + b.dataset.ie), reload)));
     body.querySelectorAll('[data-is]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/montaze/' + s.dataset.is, { status: s.value }, 'PATCH'); toast('Status montażu zmieniony.'); reload(); } catch (e) { toast(e.message); reload(); } }));
     body.querySelectorAll('[data-ip]').forEach(b => b.addEventListener('click', () => protocolForm(list.find(x => x.id === b.dataset.ip), reload)));
@@ -215,7 +253,7 @@
     if (!alive()) return;
     body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button><button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button>${xl('kontrakty')}${xl('finanse').replace('Eksport do Excela', 'Finanse działu do Excela')}</div>
       <section class="panel"><h2 class="panel-title">Kontrakty</h2>${table(['Kontrakt', 'Klient', 'Status', { t: 'Wartość', num: 1 }, { t: 'Zafakturowano', num: 1 }, { t: 'Zapłacono', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, 'Montaże'], kt.map(k => `<tr>
-        <td><b>${esc(k.number)}</b><div class="small">${esc(k.title)}</div></td><td>${esc(k.customer_name || '–')}</td>
+        <td><b>${esc(k.number)}</b><div class="small">${esc(k.title)}</div>${k.document_id ? B().pdfLink('/api/dokumenty/' + k.document_id + '/plik', 'Umowa / harmonogram') : ''}</td><td>${esc(k.customer_name || '–')}</td>
         <td><label class="visually-hidden" for="ks-${k.id}">Status</label><select class="status-select" id="ks-${k.id}" data-ks="${k.id}">${Object.entries(KT_ST).map(([s, v]) => `<option value="${s}"${s === k.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
         <td class="num">${esc(pln(k.value_net))}</td><td class="num">${esc(pln(k.zafakturowano))}${k.do_zafakturowania ? `<div class="small muted">zostało ${esc(pln(k.do_zafakturowania))}</div>` : ''}</td><td class="num">${esc(pln(k.zaplacono))}</td>
         <td class="num">${esc(pln(k.koszt))}</td><td class="num"><b>${esc(pln(k.marza))}</b></td><td class="num">${esc(k.installations_done)}/${esc(k.installations)}</td></tr>`), 'Brak kontraktów.')}</section>

@@ -15,6 +15,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', +process.env.TRUST_PROXY || 0);
 // Załączniki PDF (Knowledge Base, materiały szkoleniowe) przesyłane jako base64 w JSON – większy limit tylko dla tych ścieżek.
 app.use(['/api/wiedza', '/api/szkolenia/admin'], express.json({ limit: '15mb' }));
+// Import montaży: arkusz Excel (do 5 MB) albo umowa / harmonogram PDF, skan lub zdjęcie (do 10 MB) – przesyłane jako base64.
+app.use(['/api/d1/import/excel', '/api/d1/import/dokument'], express.json({ limit: '16mb' }));
 // Zdjęcia z telefonu (zmniejszone w przeglądarce) i protokół z podpisem w zleceniach serwisowych.
 app.use(['/api/serwisy/:id/zdjecia', '/api/serwisy/:id/protokol', '/api/moje/serwisy/:id/zdjecia', '/api/moje/serwisy/:id/protokol'], express.json({ limit: '4mb' }));
 app.use(express.json({ limit: '200kb' }));

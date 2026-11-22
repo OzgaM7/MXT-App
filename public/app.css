@@ -755,3 +755,12 @@ img { max-width: 100%; }
   .table-cards .td-actions { text-align: left; padding-top: 8px; }
   .table-cards .td-actions .btn { min-height: 44px; }
 }
+
+/* ---------- harmonogram: importy ---------- */
+.toolbar-main { margin: 14px 0 4px; }
+.imp-sec { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 4px; margin: 0 0 14px; min-width: 0; }
+.imp-sec legend { font-size: 13px; font-weight: 800; padding: 0 6px; }
+.obj-row { border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 6px; }
+.obj-row:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.obj-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.obj-new[hidden], .kl-new[hidden], .in-new[hidden], .kt-new[hidden] { display: none; }

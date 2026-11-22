@@ -80,6 +80,23 @@ Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w program
 - **Eksport do Excela** (także dla obsługi odczytów): arkusz „Odczyty” (harmonogram z terminami i statusem) i „Historia” (wykonane odczyty, kto, wynik).
 - **Testy:** `test/odczyty.js`, 65 sprawdzeń, w ramach `npm test`.
 
+## Harmonogram montaży – ekran startowy działu, import z Excela, wczytanie z umowy
+
+- **Kolejność zakładek działu** (od najważniejszej): Harmonogram montaży (otwiera się domyślnie), Serwisy, Odczyty, Kontrakty i rozliczenia, Ekipy i instalatorzy, Reklamacje, Oferty, Rentowność, Budynki i wspólnoty, Urządzenia.
+- **Na górze harmonogramu:** montaże trwające dziś, montaże w 14 dni, bez przydzielonej ekipy, czekające na protokół, serwisy do przydzielenia (z liczbą po terminie) i odczyty po terminie – kafelki serwisów i odczytów przenoszą do zakładek. Agenci AI działu są pod harmonogramem.
+- **Dodaj nowy montaż / Edytuj montaż:** przy nowym montażu budynek można wybrać z ewidencji albo dodać od razu w formularzu; przy każdym montażu jest przycisk „Edytuj”.
+- **Importuj z Excela** (`routes/importy.js`, `public/montaze-import.js`):
+  - szablon do pobrania (arkusz „Montaże” + instrukcja); można też wczytać własny arkusz `.xlsx` albo `.csv` (separator `;` lub `,`, UTF-8 albo Windows-1250) – nagłówki są rozpoznawane po nazwach (np. „Budynek”/„Nazwa budynku”/„Obiekt”, „Termin od”/„Data od”, „Liczba urządzeń”/„Podzielniki”), także gdy nad tabelą jest tytuł;
+  - **podgląd przed zapisem:** każdy wiersz ze statusem (do importu / błąd / pominięty), błędy dat i liczb, nieznane ekipy i kontrakty, nowe budynki; **możliwe duplikaty** (ten sam budynek i termin co w harmonogramie) są pomijane – ponowny import tego samego pliku nie zdubluje montaży;
+  - zapis w jednej transakcji: nowe budynki trafiają do ewidencji (raz, nawet gdy występują w kilku wierszach), ekipy dostają **jedno zbiorcze powiadomienie**; import w rejestrze operacji.
+- **Wczytaj z umowy / harmonogramu** (PDF, skan lub zdjęcie, do 10 MB; `lib/docread.js`):
+  - **Claude** (`claude-opus-5-5`, structured outputs ze ścisłym schematem JSON, model zapasowy przy odmowie) odczytuje: zamawiającego (nazwa, NIP, adres), inwestora / spółdzielnię, numer umowy i zadania, terminy, liczbę urządzeń (lokale mieszkalne / użytkowe), stawki z VAT, wartość netto, kary umowne, obowiązki wykonawcy, budynki z adresami; zaznacza, co było nieczytelne;
+  - wynik trafia do **formularza do sprawdzenia** (nic nie zapisuje się automatycznie): zamawiający i inwestor dopasowani do ewidencji klientów (po NIP / nazwie), nowy lub istniejący kontrakt z warunkami z dokumentu, lista montaży (budynek z ewidencji albo nowy, terminy, liczba urządzeń, ekipa, zakres) – można dodawać i usuwać pozycje;
+  - **zapis w jednej transakcji:** klient, inwestor, kontrakt (KT), budynki, montaże (MZ) w harmonogramie i **dokument źródłowy w kontrakcie** (zdjęcie zapisywane jako PDF; link „Umowa / harmonogram” w zakładce Kontrakty i rozliczenia); ekipy dostają powiadomienie;
+  - każde wczytanie jest zapisane (`doc_imports`): plik, dane odczytane przez model, model, tokeny i koszt, a po zatwierdzeniu – co zostało utworzone; w rejestrze operacji `montaz.odczyt_dokumentu` (z kosztem) i `montaz.import_dokumentu`;
+  - **włączanie:** odczyt działa, gdy serwer ma `ANTHROPIC_API_KEY` oraz `DOC_AI=live` (w `render.yaml` domyślnie) albo `AI_MODE=live`; agenci mogą zostać w trybie testowym. Bez klucza, przy wyłączniku AI w Security & Audit albo gdy model nie odczyta dokumentu – ten sam formularz do uzupełnienia ręcznie, dokument i tak trafia do kontraktu.
+- **Testy:** `test/harmonogram.js`, 52 sprawdzenia (w tym atrapa API Claude: postać zapytania, propozycja, koszt, wyłącznik, odmowa), w ramach `npm test`.
+
 ## Wdrożenie online
 
 Aplikacja potrzebuje serwera Node.js i bazy PostgreSQL. Do działania online wystarczy jedna z poniższych dróg. Wszystkie korzystają z gotowego `Dockerfile`, który przy starcie wykonuje migracje.
@@ -502,6 +519,8 @@ routes/eksport.js         eksport zestawień działu 1 do Excela (XLSX)
 routes/serwisy.js         API zleceń serwisowych: biuro (/api/serwisy) i serwisant (/api/moje/serwisy)
 lib/service.js            zlecenia serwisowe: statusy, terminy, flagi, przypomnienia, zdjęcia, protokół z podpisem
 routes/odczyty.js         API odczytów (obiekty, terminy, wykonanie, cofnięcie, ustawienia, eksport)
+routes/importy.js         import montaży z Excela (szablon, podgląd, zapis) i wczytanie z umowy / harmonogramu
+lib/docread.js            odczyt dokumentów przez Claude (PDF, skan, zdjęcie → dane do formularza), zdjęcie → PDF
 lib/readings.js           odczyty: zakresy, flagi terminów, przypomnienia z wyprzedzeniem
 lib/notify.js, lib/scope.js, lib/xlsx.js   powiadomienia (w aplikacji, push, e-mail), zasięg danych montera, budowa plików XLSX
 routes/biznes.js          API: CRM, finanse, kursy NBP, oferty, sprzedaż, reklamacje, dokumenty eksportowe, Knowledge Base
@@ -523,7 +542,7 @@ db/007_etap3_…sql         etap 3: platforma szkoleniowa
 db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje, tokeny, oceny agentów
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
-public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), odczyty.js (odczyty), logo, ikony, manifest PWA, service worker (cache + push)
+public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), odczyty.js (odczyty), montaze-import.js (import z Excela, wczytanie z umowy), logo, ikony, manifest PWA, service worker (cache + push)
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
 public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
                           ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
@@ -537,6 +556,7 @@ test/etap4.js             testy etapu 4 (lokalny SMTP, atrapy n8n i Langfuse)
 test/fundament.js         testy rozbudowy działu 1, etap 1 (konta, zasięg montera, powiadomienia, push, anulowanie finansów, eksport XLSX)
 test/serwisy.js           testy zleceń serwisowych (termin 14 dni, przydział, zasięg serwisanta, zdjęcia, protokół z podpisem, przypomnienia)
 test/odczyty.js           testy odczytów (rola obsługi odczytów, wykonanie z kolejnym terminem, cofnięcie, przypomnienia, eksport)
+test/harmonogram.js       testy harmonogramu: import z Excela, wczytanie z umowy (tryb ręczny i atrapa API Claude)
 ```
 
 ## Konta startowe

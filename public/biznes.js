@@ -356,11 +356,12 @@
   }
 
   // ---------- komponent: agenci działu ----------
-  async function agentsStrip(body, dep) {
+  // where: 'afterbegin' (nad treścią) albo 'beforeend' (pod treścią – np. pod harmonogramem, który jest najważniejszy).
+  async function agentsStrip(body, dep, where = 'afterbegin') {
     let d; try { d = await api('ai/agenci'); } catch (e) { return; }
     const list = d.agents.filter(a => a.department_id === dep);
     if (!list.length) return;
-    body.insertAdjacentHTML('afterbegin', `<section class="panel agents-strip"><div class="panel-head"><h2 class="panel-title">Agenci AI działu</h2><button type="button" class="linkish" data-go-wf>AI Workforce →</button></div>
+    body.insertAdjacentHTML(where, `<section class="panel agents-strip"><div class="panel-head"><h2 class="panel-title">Agenci AI działu</h2><button type="button" class="linkish" data-go-wf>AI Workforce →</button></div>
       <div class="as-list">${list.map(a => `<div class="as-item">${U().avatar(a)}<div><b>${esc(a.display_name)}</b><span class="muted small">${esc(String(a.title).split(' – ')[0])}</span></div>
         <button type="button" class="btn btn-secondary btn-sm" data-task-agent="${esc(a.id)}"${a.status !== 'aktywny' ? ' disabled' : ''}>Zleć zadanie</button></div>`).join('')}</div>
       ${d.mode === 'test' ? '<p class="muted small">Tryb testowy – odpowiedzi agentów są symulowane.</p>' : ''}</section>`);
