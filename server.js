@@ -156,6 +156,7 @@ app.use('/api', async (req, res, next) => {
     // Konto z hasłem startowym lub zresetowanym: dostęp do modułów dopiero po ustawieniu własnego hasła.
     if (u.must_change_password) return res.status(403).json({ error: 'Najpierw ustaw nowe hasło.', code: 'must_change_password' });
     req.user = { ...u, type: 'user' };
+    req.sessionHash = sha(String(req.cookies[COOKIE]));   // bieżąca sesja (np. odblokowanie strefy GHOST)
     next();
   } catch (e) { next(e); }
 });

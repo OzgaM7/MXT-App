@@ -1,8 +1,8 @@
 // Service worker MXT: zapamiętuje pliki aplikacji, żeby działała jak zainstalowana (PWA), i pokazuje powiadomienia push.
 // Zapytania /api/* zawsze idą do serwera (bez cache).
-const CACHE = 'mxt-v14';
-const SHELL = ['/', '/app.css', '/app.js', '/modules.js', '/biznes.js', '/dzial1.js', '/dzial2.js', '/szkolenia.js', '/etap4.js', '/konta.js', '/teren.js', '/serwisy.js', '/odczyty.js', '/montaze-import.js',
-  '/logo.png', '/logos/podzielniki.png', '/logos/express-parts.png', '/logos/ubezpieczenia.png', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'mxt-v15';
+const SHELL = ['/', '/app.css', '/app.js', '/modules.js', '/biznes.js', '/dzial1.js', '/dzial2.js', '/szkolenia.js', '/etap4.js', '/konta.js', '/teren.js', '/serwisy.js', '/odczyty.js', '/montaze-import.js', '/ghost.js',
+  '/logo.png', '/logos/podzielniki.png', '/logos/express-parts.png', '/logos/ubezpieczenia.png', '/logos/ghost.webp', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

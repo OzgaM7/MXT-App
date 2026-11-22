@@ -113,7 +113,15 @@
       b.querySelector('.tile-name').textContent = d.name;
       b.addEventListener('click', () => go('/dzial/' + d.slug));
       return b;
-    }));
+    }), ghostTile());
+  }
+  // Kafelek strefy GHOST – widoczny dla wszystkich; wejście chroni osobne hasło (public/ghost.js, routes/ghost.js).
+  function ghostTile() {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tile tile-ghost'; b.dataset.dept = 'ghost';
+    b.innerHTML = `<span class="tile-logo"><img src="/logos/ghost.webp" width="760" height="684" alt="GHOST" decoding="async"></span><span class="tile-body"><span class="tile-name">GHOST</span><span class="tile-go">Zaloguj się →</span></span>`;
+    b.addEventListener('click', () => go('/ghost'));
+    return b;
   }
 
   function setUser(u) {

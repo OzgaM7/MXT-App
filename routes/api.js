@@ -250,6 +250,8 @@ r.use('/d1/import', require('./importy'));
 r.use('/odczyty', require('./odczyty'));
 // Eksport do Excela (XLSX) – zestawienia działu Podzielniki i Montaże.
 r.use('/eksport', require('./eksport'));
+// Strefa GHOST: osobne hasło wejścia, odblokowanie w bieżącej sesji (routes/ghost.js).
+r.use('/ghost', require('./ghost'));
 
 r.get('/security/agents-stop', requirePerm('security.audit'), wrap(async (req, res) => {
   const q = await pool.query(`SELECT s.value, s.updated_at, u.login AS updated_by_login FROM system_settings s LEFT JOIN users u ON u.id = s.updated_by WHERE key = 'agents_stopped'`);

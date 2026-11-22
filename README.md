@@ -97,6 +97,14 @@ Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w program
   - **włączanie:** odczyt działa, gdy serwer ma `ANTHROPIC_API_KEY` oraz `DOC_AI=live` (w `render.yaml` domyślnie) albo `AI_MODE=live`; agenci mogą zostać w trybie testowym. Bez klucza, przy wyłączniku AI w Security & Audit albo gdy model nie odczyta dokumentu – ten sam formularz do uzupełnienia ręcznie, dokument i tak trafia do kontraktu.
 - **Testy:** `test/harmonogram.js`, 52 sprawdzenia (w tym atrapa API Claude: postać zapytania, propozycja, koszt, wyłącznik, odmowa), w ramach `npm test`.
 
+## Strefa GHOST
+
+- **Kafelek GHOST** na ekranie wyboru działu widzą wszyscy (konta bez wyboru działu – monter, serwisant, odczyty – mają GHOST w Menu). Kliknięcie otwiera osobny ekran logowania z logo i animowanym tłem („deszcz znaków” w kolorach logo; przy ustawieniu systemowym „ogranicz ruch” tło jest nieruchome).
+- **Konto GHOST** jest powiązane z kontem MXT (`ghost_accounts`). Na start ma je tylko `m.ozga` (migracja `014_ghost.sql`). Przy pierwszym wejściu właściciel ustawia **osobne hasło do GHOST** – inne niż do MXT, z tymi samymi zasadami (10+ znaków, litera i cyfra). Hasła nikt poza nim nie zna.
+- **Logowanie:** login konta MXT, na którym jesteś, i hasło GHOST. Odpowiedź nie zdradza, czy konto GHOST istnieje. Limit: 5 nieudanych prób w 15 minut. Odblokowanie trwa 12 godzin i dotyczy tylko bieżącej sesji – wylogowanie z MXT albo „Zablokuj GHOST” je kończy.
+- **Rejestr:** `ghost.haslo_ustawione`, `ghost.logowanie` (ok / odmowa), `ghost.wylogowanie`. Zapomniane hasło: wyczyszczenie `password_hash` w `ghost_accounts` przywraca ekran „Ustaw hasło”.
+- Zawartość panelu po zalogowaniu – w przygotowaniu. Testy: `node test/ghost.js` (część `npm test`).
+
 ## Wdrożenie online
 
 Aplikacja potrzebuje serwera Node.js i bazy PostgreSQL. Do działania online wystarczy jedna z poniższych dróg. Wszystkie korzystają z gotowego `Dockerfile`, który przy starcie wykonuje migracje.
