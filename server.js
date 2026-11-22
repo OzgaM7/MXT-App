@@ -15,6 +15,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', +process.env.TRUST_PROXY || 0);
 // Załączniki PDF (Knowledge Base, materiały szkoleniowe) przesyłane jako base64 w JSON – większy limit tylko dla tych ścieżek.
 app.use(['/api/wiedza', '/api/szkolenia/admin'], express.json({ limit: '15mb' }));
+// Zdjęcia z telefonu (zmniejszone w przeglądarce) i protokół z podpisem w zleceniach serwisowych.
+app.use(['/api/serwisy/:id/zdjecia', '/api/serwisy/:id/protokol', '/api/moje/serwisy/:id/zdjecia', '/api/moje/serwisy/:id/protokol'], express.json({ limit: '4mb' }));
 app.use(express.json({ limit: '200kb' }));
 app.use(cookieParser());
 // Ochrona przed CSRF: zapisujące żądania API muszą być JSON-em (formularz z innej strony nie ustawi tego nagłówka).

@@ -717,3 +717,23 @@ img { max-width: 100%; }
   .job { grid-template-columns: 1fr auto; }
   .job-date { grid-column: 1 / -1; }
 }
+
+/* ---------- zlecenia serwisowe (biuro: zakładka „Serwisy”, serwisant: „Moje serwisy”) ---------- */
+.seg-wrap { margin: 14px 0 10px; max-width: 100%; }
+.flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.flags:empty { display: none; }
+.card-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+.card-actions:empty { display: none; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.photo-grid a { display: block; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); aspect-ratio: 1; background: var(--info-soft); }
+.photo-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sig-pad { display: block; width: 100%; height: 160px; border: 1px dashed var(--muted); border-radius: 12px; background: var(--surface); touch-action: none; cursor: crosshair; }
+.sig-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+.job-urgent { border-left: 4px solid var(--accent); }
+/* wąski telefon: pasek u góry (login, rola, dzwonek, Menu, Wyloguj) mieści się w jednej linii – rola widoczna w podpowiedzi i w menu kont */
+@media (max-width: 420px) {
+  .userbar .role-chip { display: none; }
+  .userbar-name { max-width: 34vw; }
+  .userbar .btn-ghost { padding-left: 9px; padding-right: 9px; }
+}

@@ -6,7 +6,7 @@
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
   const pln = n => B().pln(n), table = (...a) => B().table(...a), opts = (...a) => B().opts(...a);
   const DEP = 'podzielniki-i-montaze', PATH = '/dzial/' + DEP;
-  const TABS = [['budynki', 'Budynki i wspólnoty'], ['urzadzenia', 'Urządzenia'], ['harmonogram', 'Harmonogram montaży'], ['ekipy', 'Ekipy i instalatorzy'],
+  const TABS = [['budynki', 'Budynki i wspólnoty'], ['urzadzenia', 'Urządzenia'], ['harmonogram', 'Harmonogram montaży'], ['serwisy', 'Serwisy'], ['ekipy', 'Ekipy i instalatorzy'],
     ['reklamacje', 'Reklamacje'], ['rozliczenia', 'Rozliczenia kontraktów'], ['rentownosc', 'Rentowność'], ['oferty', 'Oferty']];
   const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplomierz: 'Ciepłomierz', modul_radiowy: 'Moduł radiowy', inny: 'Inne' };
   const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
@@ -19,10 +19,14 @@
     ? `<a class="btn btn-secondary btn-sm btn-xl" href="/api/eksport/d1/${list}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v))}" download>Eksport do Excela</a>` : '';
 
   async function page(root, path, alive) {
-    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Budynki, urządzenia, montaże, protokoły odbioru, rozliczenia i rentowność.');
+    // Link z powiadomienia może wskazać zakładkę (?tab=serwisy&z=<id>).
+    const want = new URLSearchParams(location.search).get('tab');
+    if (want && TABS.some(([k]) => k === want)) tab = want;
+    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Budynki, urządzenia, montaże, serwisy, protokoły odbioru, rozliczenia i rentowność.');
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
-    await ({ budynki, urzadzenia, harmonogram, ekipy, reklamacje, rozliczenia, rentownosc, oferty }[tab])(panel, reload, alive);
+    const serwisy = (...a) => window.MXT_SERWIS.officeTab(...a);
+    await ({ budynki, urzadzenia, harmonogram, serwisy, ekipy, reklamacje, rozliczenia, rentownosc, oferty }[tab])(panel, reload, alive);
     if (!alive()) return;
     body.replaceChildren(panel);
     if (['budynki', 'harmonogram'].includes(tab)) await B().agentsStrip(panel, DEP);

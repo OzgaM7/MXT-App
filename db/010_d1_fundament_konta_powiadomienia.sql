@@ -4,8 +4,14 @@
 -- ---------- role i konta ----------
 -- Rola główna (users.role) + role dodatkowe (users.extra_roles), np. monter, który też rozlicza.
 -- Administrator jest zawsze rolą główną (sprawdzenia w Approval Center opierają się na users.role).
-ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('administrator', 'uzytkownik', 'kierownik', 'rozliczajacy', 'monter'));
+-- Lista ról rozszerzana tylko, gdy jest starsza (kolejne migracje, np. 011 – serwisant, dopisują role; ponowne
+-- uruchomienie tej migracji nie może jej zawęzić).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check' AND pg_get_constraintdef(oid) LIKE '%monter%') THEN
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+    ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('administrator', 'uzytkownik', 'kierownik', 'rozliczajacy', 'monter'));
+  END IF;
+END $$;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_roles text[] NOT NULL DEFAULT '{}';
 DO $$ BEGIN
   ALTER TABLE users ADD CONSTRAINT users_extra_roles_check CHECK (extra_roles <@ ARRAY['uzytkownik', 'kierownik', 'rozliczajacy', 'monter']::text[]);

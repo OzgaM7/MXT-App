@@ -240,6 +240,9 @@ r.get('/audit', requirePerm('security.audit'), wrap(async (req, res) => {
 r.use('/konta', require('./konta'));
 // Powiadomienia (każde konto, tylko własne) i widok pracowników terenowych (monter: tylko montaże własnej ekipy).
 r.use('/powiadomienia', require('./powiadomienia'));
+// Zlecenia serwisowe: biuro (service.manage) i serwisant (service.own – tylko zlecenia przypisane do niego).
+r.use('/serwisy', require('./serwisy').office);
+r.use('/moje/serwisy', require('./serwisy').own);
 r.use('/moje', require('./teren'));
 // Eksport do Excela (XLSX) – zestawienia działu Podzielniki i Montaże.
 r.use('/eksport', require('./eksport'));

@@ -110,6 +110,30 @@ const LISTS = {
         { header: 'Status', key: 'status', width: 13 }, { header: 'Wartość netto', key: 'value_net', type: 'pln', width: 15 }, ...MONEY] }
     ];
   },
+  async serwisy(req) {
+    const S = require('../lib/service');
+    const f = where(req, [['od', 'o.received_at >= ?', v => V.date(v)], ['do', 'o.received_at <= ?', v => V.date(v)],
+      ['status', 'o.status = ?', v => V.oneOf(v, Object.keys(S.ST), 'Status')], ['serwisant', 'o.assigned_to = ?', v => V.uuid(v)]]);
+    const q = await pool.query(`SELECT o.number, o.received_at, o.assign_due, o.assigned_at, o.planned_date, o.due_date, o.completed_at, o.approved_at, o.priority, o.status,
+        o.client_name, o.address, o.unit, o.city, o.contact_name, o.contact_phone, o.description, o.cancel_reason, u.full_name AS assigned_name, u.login AS assigned_login,
+        k.number AS complaint, ${S.FLAGS},
+        (SELECT count(*)::int FROM service_photos p WHERE p.order_id = o.id) AS photos,
+        (o.assigned_at IS NOT NULL AND (o.assigned_at AT TIME ZONE 'Europe/Warsaw')::date <= o.assign_due) AS assigned_on_time
+      FROM service_orders o LEFT JOIN users u ON u.id = o.assigned_to LEFT JOIN complaints k ON k.id = o.complaint_id ${f.w}
+      ORDER BY o.received_at DESC, o.number LIMIT ${MAX}`, f.p);
+    const yn = v => v ? 'tak' : 'nie';
+    return [{ name: 'Serwisy', rows: q.rows.map(o => ({ ...o, status: S.ST[o.status], priority: S.PRIORITY[o.priority], assigned: o.assigned_name || o.assigned_login || '',
+      po_przydzial: yn(o.po_terminie_przydzialu), po_realizacja: yn(o.po_terminie_realizacji), w_terminie: o.assigned_at ? yn(o.assigned_on_time) : '' })), columns: [
+      { header: 'Numer', key: 'number', width: 13 }, { header: 'Otrzymano', key: 'received_at', type: 'date', width: 11 }, { header: 'Termin przydziału', key: 'assign_due', type: 'date', width: 12 },
+      { header: 'Przydzielono', key: 'assigned_at', type: 'datetime', width: 15 }, { header: 'Przydział w terminie', key: 'w_terminie', width: 11 },
+      { header: 'Serwisant', key: 'assigned', width: 20 }, { header: 'Wizyta', key: 'planned_date', type: 'date', width: 11 }, { header: 'Termin realizacji', key: 'due_date', type: 'date', width: 12 },
+      { header: 'Wykonano', key: 'completed_at', type: 'datetime', width: 15 }, { header: 'Zatwierdzono', key: 'approved_at', type: 'datetime', width: 15 },
+      { header: 'Status', key: 'status', width: 16 }, { header: 'Priorytet', key: 'priority', width: 10 },
+      { header: 'Po terminie przydziału', key: 'po_przydzial', width: 11 }, { header: 'Po terminie realizacji', key: 'po_realizacja', width: 11 },
+      { header: 'Klient', key: 'client_name', width: 24 }, { header: 'Adres', key: 'address', width: 26 }, { header: 'Lokal', key: 'unit', width: 8 }, { header: 'Miasto', key: 'city', width: 14 },
+      { header: 'Kontakt', key: 'contact_name', width: 18 }, { header: 'Telefon', key: 'contact_phone', width: 14 }, { header: 'Opis', key: 'description', width: 40 },
+      { header: 'Reklamacja', key: 'complaint', width: 13 }, { header: 'Zdjęcia', key: 'photos', type: 'int' }, { header: 'Powód anulowania', key: 'cancel_reason', width: 24 }] }];
+  },
   async finanse(req) {
     const f = where(req, [['od', 'f.entry_date >= ?', v => V.date(v)], ['do', 'f.entry_date <= ?', v => V.date(v)],
       ['rodzaj', 'f.kind = ?', v => V.oneOf(v, ['przychod', 'koszt'], 'Rodzaj')]], ['f.department_id = $1'], [DEP]);
@@ -126,7 +150,8 @@ const LISTS = {
       { header: 'Montaż', key: 'installation', width: 14 }] }];
   }
 };
-const TITLES = { budynki: 'Budynki', urzadzenia: 'Urządzenia', montaze: 'Harmonogram montaży', kontrakty: 'Kontrakty i rozliczenia', rentownosc: 'Rentowność', finanse: 'Finanse działu' };
+const TITLES = { budynki: 'Budynki', urzadzenia: 'Urządzenia', montaze: 'Harmonogram montaży', kontrakty: 'Kontrakty i rozliczenia', rentownosc: 'Rentowność',
+  finanse: 'Finanse działu', serwisy: 'Zlecenia serwisowe' };
 
 r.get('/d1/:lista', exp, wrap(async (req, res) => {
   const name = req.params.lista;

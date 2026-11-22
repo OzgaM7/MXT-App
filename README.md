@@ -26,7 +26,7 @@ Podstawa pod duże montaże, aplikację montera, serwisy i odczyty. Migracja `db
 
 - **Konta i role** (moduł „Konta i role”, tylko administrator):
   - zakładanie kont pracowników z hasłem tymczasowym (zmiana przy pierwszym logowaniu);
-  - role: Administrator, Pracownik biura, Kierownik, Osoba rozliczająca, Monter. Konto ma rolę główną i może mieć role dodatkowe – uprawnienia się sumują (`lib/rbac.js`);
+  - role: Administrator, Pracownik biura, Kierownik, Osoba rozliczająca, Monter, Serwisant. Konto ma rolę główną i może mieć role dodatkowe – uprawnienia się sumują (`lib/rbac.js`);
   - kont się nie usuwa: wyłączone konto nie loguje się, jest wylogowane ze wszystkich urządzeń, a jego wpisy zostają;
   - nie można wyłączyć własnego konta ani zmienić własnej roli; musi zostać co najmniej jeden aktywny administrator;
   - role nadane przez administratora nie są nadpisywane przy ponownym wdrożeniu (migracja 003 ustawia role startowe tylko przy pierwszej instalacji).
@@ -42,6 +42,29 @@ Podstawa pod duże montaże, aplikację montera, serwisy i odczyty. Migracja `db
 - **Stronicowanie urządzeń:** lista po 100 pozycji z filtrem typu i statusu oraz łączną liczbą (projekty z tysiącami podzielników).
 - **Konfiguracja (opcjonalnie):** `PUSH_CONTACT` – adres kontaktowy dla usług push (domyślnie adres aplikacji z `APP_URL` albo Render).
 - **Testy:** `test/fundament.js`, 104 sprawdzenia, w ramach `npm test`.
+
+## Zlecenia serwisowe (dział Podzielniki i Montaże)
+
+Osobny proces, niezależny od dużych montaży. Migracja `db/011_d1_serwisy.sql`, logika `lib/service.js`, API `routes/serwisy.js`, interfejs `public/serwisy.js`.
+
+- **Biuro** (zakładka „Serwisy” w dziale, uprawnienie `service.manage` – role biurowe):
+  - przyjęcie zlecenia: data otrzymania, klient, adres i lokal (albo budynek z ewidencji lub reklamacja – adres uzupełni się sam), kontakt, opis, priorytet, termin realizacji;
+  - **termin przydzielenia: 14 dni kalendarzowych od daty otrzymania**, liczony automatycznie (`assign_due`). Termin realizacji to osobne pole;
+  - przydział serwisanta (lista z liczbą otwartych zleceń), termin wizyty, zmiana lub odebranie przydziału, edycja, notatki, zdjęcia, anulowanie z powodem;
+  - kafelki: do przydzielenia, po terminie przydziału, przydział w ciągu 3 dni, u serwisantów, po terminie realizacji, do zatwierdzenia;
+  - zatwierdzanie wykonanych zleceń: administrator i kierownik (`service.approve`); można też cofnąć zlecenie do poprawy.
+- **Statusy:** Nowe (do weryfikacji), Oczekuje na przydzielenie, Przypisane, Zaplanowane, W realizacji, Wymaga ponownej wizyty, Wykonane, Zatwierdzone, Anulowane.
+  „Po terminie przydziału”, „po terminie realizacji” i „pilne” to **oznaczenia wyliczane z dat**, nie statusy – przekroczenie terminu nie zmienia statusu realizacji.
+- **Serwisant** (rola „Serwisant”, ekran „Moje serwisy” na telefonie, uprawnienie `service.own`):
+  - widzi wyłącznie zlecenia przypisane do niego; cudze zlecenie zwraca 404 i trafia do rejestru;
+  - lista „Do zrobienia” / „Wykonane”, karta z adresem (nawigacja), telefonem klienta, opisem i historią;
+  - ustala termin wizyty, rozpoczyna pracę, zgłasza ponowną wizytę (z powodem), dodaje zdjęcia z aparatu (zmniejszane w telefonie do 1600 px) i notatki;
+  - kończy zlecenie **protokołem serwisowym**: czynności, użyte części, uwagi, osoba potwierdzająca i **podpis palcem na ekranie** → PDF (numer PS/rok/nr) w dokumentach działu.
+- **Powiadomienia** (dzwonek, push, opcjonalnie e-mail): serwisant – przydział, przekazanie, zmiana terminu, anulowanie, pilne, do poprawy, termin realizacji jutro/dziś, po terminie; kierownik i administrator – przypomnienia o terminie przydziału (3 dni i 1 dzień przed, w dniu terminu, po terminie i po kolejnych 7 dniach), ponowna wizyta, zlecenie do zatwierdzenia, po terminie realizacji.
+  Przypomnienia sprawdza harmonogram co 5 minut (`SERVICE_REMINDERS_MS`); klucze deduplikacji gwarantują, że to samo przypomnienie nie przyjdzie dwa razy. Ustawienia (dni przydziału, dni przypomnień) w `system_settings` → `service`.
+- **Eksport do Excela:** zestawienie serwisów z terminami, informacją „przydział w terminie”, flagami i liczbą zdjęć.
+- **Uwaga (hosting):** na darmowym planie Render aplikacja usypia się po ok. 15 min bez ruchu – wtedy przypomnienia czekają do jej wybudzenia. Na płatnym planie działają na bieżąco.
+- **Testy:** `test/serwisy.js`, 96 sprawdzeń, w ramach `npm test`.
 
 ## Wdrożenie online
 
@@ -462,6 +485,8 @@ routes/konta.js           API kont pracowników (zakładanie, role, instalator, 
 routes/powiadomienia.js   API powiadomień zalogowanego pracownika (lista, licznik, push, kopia e-mail)
 routes/teren.js           API „Moje montaże” (monter: tylko montaże własnej ekipy)
 routes/eksport.js         eksport zestawień działu 1 do Excela (XLSX)
+routes/serwisy.js         API zleceń serwisowych: biuro (/api/serwisy) i serwisant (/api/moje/serwisy)
+lib/service.js            zlecenia serwisowe: statusy, terminy, flagi, przypomnienia, zdjęcia, protokół z podpisem
 lib/notify.js, lib/scope.js, lib/xlsx.js   powiadomienia (w aplikacji, push, e-mail), zasięg danych montera, budowa plików XLSX
 routes/biznes.js          API: CRM, finanse, kursy NBP, oferty, sprzedaż, reklamacje, dokumenty eksportowe, Knowledge Base
 routes/szkolenia.js       API Platformy Szkoleniowej
@@ -482,7 +507,7 @@ db/007_etap3_…sql         etap 3: platforma szkoleniowa
 db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje, tokeny, oceny agentów
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
-public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), logo, ikony, manifest PWA, service worker (cache + push)
+public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), logo, ikony, manifest PWA, service worker (cache + push)
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
 public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
                           ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
@@ -494,6 +519,7 @@ test/etap2.js             testy etapu 2, w tym tryb rzeczywisty na atrapie API A
 test/etap3.js             testy etapu 3 (działy, CRM, finanse, KB, szkolenia; atrapa API NBP)
 test/etap4.js             testy etapu 4 (lokalny SMTP, atrapy n8n i Langfuse)
 test/fundament.js         testy rozbudowy działu 1, etap 1 (konta, zasięg montera, powiadomienia, push, anulowanie finansów, eksport XLSX)
+test/serwisy.js           testy zleceń serwisowych (termin 14 dni, przydział, zasięg serwisanta, zdjęcia, protokół z podpisem, przypomnienia)
 ```
 
 ## Konta startowe
