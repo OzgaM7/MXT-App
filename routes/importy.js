@@ -261,7 +261,7 @@ r.post('/dokument', use, wrap(async (req, res) => {
   if (av.ai) {
     try { const x = await docread.readWithClaude(buf, mime); extracted = x.data; model = x.model; usage = x.usage; cost = x.cost; }
     catch (e) {
-      note = 'Nie udało się odczytać dokumentu automatycznie (' + (e.message || 'błąd usługi AI') + '). Uzupełnij formularz ręcznie.';
+      note = 'Nie udało się odczytać dokumentu automatycznie: ' + docread.friendlyError(e).replace(/\.+$/, '') + '. Uzupełnij formularz ręcznie – dokument zostanie dołączony do kontraktu.';
       if (e.usage) { usage = e.usage; cost = e.cost; }
       console.error('odczyt dokumentu:', e.message);
     }

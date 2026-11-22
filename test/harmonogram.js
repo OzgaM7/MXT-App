@@ -27,6 +27,9 @@ const seen = [];
 const mock = http.createServer((req, res) => {
   let b = ''; req.on('data', c => b += c); req.on('end', () => {
     const body = JSON.parse(b || '{}'); seen.push({ headers: req.headers, body, url: req.url });
+    const fail = { credit: [400, 'invalid_request_error', 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'],
+      auth: [401, 'authentication_error', 'invalid x-api-key'] }[mockMode];
+    if (fail) { res.writeHead(fail[0], { 'content-type': 'application/json' }); return res.end(JSON.stringify({ type: 'error', error: { type: fail[1], message: fail[2] } })); }
     const content = mockMode === 'refusal' ? [] : [{ type: 'text', text: JSON.stringify(EXTRACTED) }];
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ id: 'msg_doc', type: 'message', role: 'assistant', model: body.model, content, stop_reason: mockMode === 'refusal' ? 'refusal' : 'end_turn',
@@ -172,7 +175,14 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     await pool.query(`UPDATE system_settings SET value = '{"stopped": false}' WHERE key = 'agents_stopped'`);
     mockMode = 'refusal';
     r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'b.pdf' }, AL);
-    ok(r.s === 201 && r.j.tryb === 'reczny' && r.j.uwaga.includes('odmówił'), 'odmowa modelu – formularz ręczny');
+    ok(r.s === 201 && r.j.tryb === 'reczny' && r.j.uwaga.includes('odmówił') && !r.j.uwaga.includes('..'), 'odmowa modelu – formularz ręczny');
+    // błędy API → zrozumiały komunikat zamiast surowej odpowiedzi
+    mockMode = 'credit';
+    r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'c.pdf' }, AL);
+    ok(r.s === 201 && r.j.tryb === 'reczny' && r.j.uwaga.includes('brak środków na koncie Anthropic') && !r.j.uwaga.includes('{'), 'brak środków na koncie API – komunikat po polsku, formularz ręczny');
+    mockMode = 'auth';
+    r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'd.pdf' }, AL);
+    ok(r.j.tryb === 'reczny' && r.j.uwaga.includes('klucz ANTHROPIC_API_KEY na serwerze jest nieprawidłowy'), 'zły klucz API – komunikat po polsku');
     mockMode = 'ok';
 
     console.log(`OK: testy harmonogramu i importów przeszły (${passed} sprawdzeń)`);
