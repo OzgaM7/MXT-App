@@ -122,6 +122,7 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     r = await call('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'harmonogram zadanie 8.pdf' }, A);
     ok(r.s === 201 && r.j.tryb === 'reczny' && r.j.uwaga.includes('DOC_AI') && r.j.propozycja === null, 'bez AI: formularz ręczny z wyjaśnieniem');
     const imp1 = r.j.id;
+    const av = await call('d1/import/dokument/dostepnosc', null, A); ok(av.s === 200 && av.j.ai === false && av.j.powod.includes('ANTHROPIC_API_KEY'), 'dostępność: odczyt automatyczny wyłączony (okno mówi to z góry)');
     r = await call(`d1/import/dokument/${imp1}/plik`, null, A); ok((await r.buf()).subarray(0, 5).toString() === '%PDF-', 'podgląd dokumentu');
     const png = fs.readFileSync(path.join(__dirname, '..', 'public', 'icons', 'icon-192.png'));
     r = await call('d1/import/dokument', { plik: png.toString('base64'), nazwa: 'zdjecie umowy.png' }, A);
@@ -145,6 +146,7 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     // ---------- umowa / harmonogram: odczyt przez Claude (atrapa API) ----------
     r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'harmonogram.pdf' }, AL);
     eq(r.s, 201); eq(r.j.tryb, 'ai', 'odczyt automatyczny');
+    eq((await live('d1/import/dokument/dostepnosc', null, AL)).j.ai, true, 'dostępność: odczyt automatyczny włączony');
     const q = seen[seen.length - 1];
     ok(q.body.model === 'claude-opus-5-5' && q.body.output_config.format.type === 'json_schema' && q.body.output_config.effort === 'high', 'model, structured outputs, effort');
     ok(q.body.messages[0].content[0].type === 'document' && q.body.messages[0].content[0].source.media_type === 'application/pdf', 'PDF jako blok document');
@@ -166,6 +168,7 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     const n0 = seen.length;
     r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'a.pdf' }, AL);
     ok(r.j.tryb === 'reczny' && r.j.uwaga.includes('wyłącznikiem') && seen.length === n0, 'wyłącznik AI – bez wywołania modelu');
+    eq((await live('d1/import/dokument/dostepnosc', null, AL)).j.ai, false, 'dostępność: wyłącznik AI');
     await pool.query(`UPDATE system_settings SET value = '{"stopped": false}' WHERE key = 'agents_stopped'`);
     mockMode = 'refusal';
     r = await live('d1/import/dokument', { plik: pdf.toString('base64'), nazwa: 'b.pdf' }, AL);

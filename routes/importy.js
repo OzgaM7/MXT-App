@@ -191,6 +191,9 @@ async function analyse(buf) {
       nowe_budynki: new Set(out.filter(o => o.status === 'ok' && o.data.building.mode === 'nowy').map(o => o.data.building.key)).size } };
 }
 
+// Czy automatyczny odczyt dokumentów jest włączony – okno „Wczytaj z umowy” mówi z góry, czy dane wypełnią się same.
+r.get('/dokument/dostepnosc', use, wrap(async (req, res) => res.json(await docread.availability())));
+
 r.get('/szablon', use, wrap(async (req, res) => {
   const ex = [{ name: 'SM Słoneczna, blok 7', address: 'ul. Słoneczna 7', city: 'Zielona Góra', postal_code: '65-001', units_count: 60, planned_date: '2026-12-01', planned_end: '2026-12-03',
     crew: 'Ekipa 1 – Warszawa', devices_planned: 240, scope: 'Wymiana podzielników na radiowe', project: '', materials: 'Plomby 260; Adaptery 20', notes: '' },
