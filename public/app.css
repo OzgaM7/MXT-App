@@ -663,3 +663,57 @@ img { max-width: 100%; }
 .pw-rules li.ok::before { content: "✓"; color: var(--ok); font-weight: 800; }
 /* ekran zmiany hasła: miejsce na pasek użytkownika (Wyloguj) nad logo */
 [data-screen="password"] { padding-top: max(84px, calc(env(safe-area-inset-top, 0px) + 72px)); }
+
+/* ---------- rozbudowa działu 1, etap 1: dzwonek, powiadomienia, konta, „Moje montaże”, eksport ---------- */
+.bell { position: relative; padding: 0 10px; }
+.bell svg { width: 20px; height: 20px; display: block; }
+.bell-n { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.notif-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.notif-b { font: inherit; color: inherit; width: 100%; text-align: left; cursor: pointer; display: grid; gap: 3px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; min-height: 48px; }
+.notif-b:hover { border-color: var(--ink); }
+.notif-b:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.notif-new .notif-b { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.notif-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.notif-kind { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.notif-title { font-weight: 700; }
+.notif-body { font-size: 14px; color: var(--muted); }
+.set-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); }
+.set-row:first-of-type { border-top: 0; padding-top: 0; }
+.set-row p { margin: 2px 0 0; max-width: 60ch; }
+.row-off td { color: var(--muted); }
+.chip-admin { background: var(--gold-soft); color: var(--gold); border-color: transparent; }
+.chip-link { text-decoration: none; color: var(--ink); background: var(--surface); }
+.chip-link:hover { border-color: var(--ink); }
+.role-help { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.checks { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.checks legend { font-size: 13px; font-weight: 600; color: var(--muted); padding: 0 4px; }
+.panel-link p { margin: 4px 0 10px; }
+.label-sm { margin: 14px 0 4px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.plain { margin: 0; padding-left: 18px; font-size: 14px; display: grid; gap: 2px; }
+.table-sm td, .table-sm th { padding: 6px 8px; font-size: 13px; }
+.list-count { margin: 4px 0 8px; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.btn-xl { text-decoration: none; }
+/* Moje montaże (telefon montera) */
+.field-me { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.field-me .label-sm { margin-top: 0; }
+.field-team { display: flex; flex-wrap: wrap; gap: 6px; }
+.field-team .chip { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+.job-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.job { font: inherit; color: inherit; width: 100%; text-align: left; cursor: pointer; display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-height: 64px; box-shadow: var(--shadow); }
+.job:hover { border-color: var(--ink); }
+.job:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.job-date { font-weight: 800; font-size: 14px; line-height: 1.25; }
+.job-main { display: grid; gap: 2px; min-width: 0; }
+.job-main > * { overflow-wrap: anywhere; }
+.job-addr { background: var(--info-soft); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; justify-items: start; }
+@media (max-width: 520px) {
+  .job { grid-template-columns: 1fr auto; }
+  .job-date { grid-column: 1 / -1; }
+}

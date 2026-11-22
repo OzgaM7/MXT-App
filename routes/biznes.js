@@ -117,11 +117,27 @@ r.post('/finanse/:id/zaplacono', idParam, use, wrap(async (req, res) => {
   await audit(req, 'finanse.zaplata', { resource: 'finance', resourceId: req.params.id });
   res.json(q.rows[0]);
 }));
-r.delete('/finanse/:id', idParam, admin, wrap(async (req, res) => {
-  const q = await pool.query('DELETE FROM finance WHERE id = $1 RETURNING *', [req.params.id]);
-  if (!q.rows[0]) throw bad(404, 'Nie znaleziono wpisu.');
-  await audit(req, 'finanse.usuniecie', { resource: 'finance', resourceId: req.params.id, details: { kwota: q.rows[0].amount, opis: q.rows[0].description } });
-  res.json({ ok: true });
+// Anulowanie wpisu (np. błędna kwota lub dubel): wpis znika z sum i zestawień, a pełna kopia trafia do archiwum
+// finance_cancelled z powodem, autorem i datą. Danych finansowych nie usuwa się bez śladu.
+r.post('/finanse/:id/anuluj', idParam, requirePerm('finance.cancel'), wrap(async (req, res) => {
+  const reason = V.str((req.body || {}).powod, 500, true, 'Powód anulowania');
+  if (reason.length < 3) throw bad(400, 'Powód anulowania: podaj co najmniej 3 znaki.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const f = (await client.query('SELECT * FROM finance WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!f) throw bad(404, 'Nie znaleziono wpisu.');
+    await client.query('INSERT INTO finance_cancelled (id, data, reason, cancelled_by) VALUES ($1, $2, $3, $4)', [f.id, JSON.stringify(f), reason, req.user.id]);
+    await client.query('DELETE FROM finance WHERE id = $1', [f.id]);
+    await audit(req, 'finanse.anulowanie', { resource: 'finance', resourceId: f.id, details: { kwota: f.amount, waluta: f.currency, opis: f.description, powod: reason }, client });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+}));
+r.get('/finanse/anulowane', use, wrap(async (req, res) => {
+  const q = await pool.query(`SELECT x.id, x.data, x.reason, x.cancelled_at, u.login AS cancelled_by_login FROM finance_cancelled x LEFT JOIN users u ON u.id = x.cancelled_by
+    ORDER BY x.cancelled_at DESC LIMIT 200`);
+  res.json(q.rows);
 }));
 // Podsumowanie: przychody, koszty, marże miesięcznie (12 mies.), należności, prognoza (średnia z 3 pełnych miesięcy).
 r.get('/finanse/podsumowanie', use, wrap(async (req, res) => res.json(await financeSummary())));

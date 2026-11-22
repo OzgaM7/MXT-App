@@ -17,8 +17,31 @@ Moduły działów będą dodawane w kolejnych etapach.
   - inne niż obecne.
 - **Po zmianie:** pozostałe sesje są wylogowane, a w rejestrze pojawia się wpis `haslo.zmiana`. Po 5 błędnych próbach podania obecnego hasła obowiązuje 15 minut blokady.
 - **Zmiana w dowolnym momencie:** Menu → „Zmień hasło”.
-- **Zapomniane hasło:** administrator w Security & Audit → Konta → „Resetuj hasło”. Hasło tymczasowe jest pokazywane raz, konto zostaje wylogowane, a przy logowaniu pracownik ustawia własne. Wpis w rejestrze: `haslo.reset`.
+- **Zapomniane hasło:** administrator w Konta i role → „Reset hasła”. Hasło tymczasowe jest pokazywane raz, konto zostaje wylogowane, a przy logowaniu pracownik ustawia własne. Wpis w rejestrze: `haslo.reset`.
 - **Testy:** `test/haslo.js`, 56 sprawdzeń, w ramach `npm test`.
+
+## Rozbudowa działu Podzielniki i Montaże – etap 1 (fundament)
+
+Podstawa pod duże montaże, aplikację montera, serwisy i odczyty. Migracja `db/010_d1_fundament_konta_powiadomienia.sql`.
+
+- **Konta i role** (moduł „Konta i role”, tylko administrator):
+  - zakładanie kont pracowników z hasłem tymczasowym (zmiana przy pierwszym logowaniu);
+  - role: Administrator, Pracownik biura, Kierownik, Osoba rozliczająca, Monter. Konto ma rolę główną i może mieć role dodatkowe – uprawnienia się sumują (`lib/rbac.js`);
+  - kont się nie usuwa: wyłączone konto nie loguje się, jest wylogowane ze wszystkich urządzeń, a jego wpisy zostają;
+  - nie można wyłączyć własnego konta ani zmienić własnej roli; musi zostać co najmniej jeden aktywny administrator;
+  - role nadane przez administratora nie są nadpisywane przy ponownym wdrożeniu (migracja 003 ustawia role startowe tylko przy pierwszej instalacji).
+- **Konto montera ↔ instalator:** konto powiązane z instalatorem widzi w „Moje montaże” wyłącznie montaże swojej ekipy: termin, adres z nawigacją, zakres prac, materiały, urządzenia, skład ekipy z telefonami. Bez finansów, wartości kontraktów i danych innych ekip – reguła w jednym miejscu (`lib/scope.js`), cudzy montaż zwraca 404 i trafia do rejestru jako odmowa dostępu. Pozostałe moduły zwracają monterowi 403.
+- **Powiadomienia** (`lib/notify.js`, dzwonek z licznikiem w pasku u góry, strona „Powiadomienia”):
+  - przydział montażu do ekipy, zmiana terminu, przekazanie innej ekipie, anulowanie, przeniesienie instalatora do innej ekipy – tylko do kont danej ekipy;
+  - push na telefon (Web Push, bez płatnych usług; klucze VAPID generowane automatycznie i zapisane w bazie). Na iPhonie działa po dodaniu MXT do ekranu głównego;
+  - opcjonalna kopia na e-mail (gdy konto ma adres e-mail i pracownik ją włączy);
+  - klucz deduplikacji: to samo przypomnienie nie trafi do tej samej osoby dwa razy (gotowe pod terminy serwisów i odczytów);
+  - dostawa przez kolejkę zadań z ponawianiem; urządzenia, które wypisały się z powiadomień, są usuwane.
+- **Finanse – anulowanie zamiast usuwania:** wpis znika z sum i zestawień, a pełna kopia trafia do archiwum `finance_cancelled` z powodem, autorem i datą (Finance Intelligence → „Anuluj”, tylko administrator).
+- **Eksport do Excela (XLSX)** z działu Podzielniki i Montaże: budynki, urządzenia, harmonogram montaży, kontrakty, finanse działu, rentowność (3 arkusze). Te same filtry co na ekranie, nagłówki z filtrem, daty jako daty Excela, kwoty w zł. Każdy eksport jest w rejestrze operacji. Uprawnienie `export.xlsx` mają role biurowe, monter nie.
+- **Stronicowanie urządzeń:** lista po 100 pozycji z filtrem typu i statusu oraz łączną liczbą (projekty z tysiącami podzielników).
+- **Konfiguracja (opcjonalnie):** `PUSH_CONTACT` – adres kontaktowy dla usług push (domyślnie adres aplikacji z `APP_URL` albo Render).
+- **Testy:** `test/fundament.js`, 104 sprawdzenia, w ramach `npm test`.
 
 ## Wdrożenie online
 
@@ -435,6 +458,11 @@ render.yaml               wdrożenie na Render (Blueprint: aplikacja + PostgreSQ
 lib/ai/                   agenci AI: catalog (stanowiska, prompty), runner, provider (test/Claude), tools, board, mock
 routes/ai.js              API: Ustawienia AI, AI Board, AI Workforce, zadania agentów
 routes/dzial1.js          API działu Podzielniki i Montaże
+routes/konta.js           API kont pracowników (zakładanie, role, instalator, wyłączanie, reset hasła)
+routes/powiadomienia.js   API powiadomień zalogowanego pracownika (lista, licznik, push, kopia e-mail)
+routes/teren.js           API „Moje montaże” (monter: tylko montaże własnej ekipy)
+routes/eksport.js         eksport zestawień działu 1 do Excela (XLSX)
+lib/notify.js, lib/scope.js, lib/xlsx.js   powiadomienia (w aplikacji, push, e-mail), zasięg danych montera, budowa plików XLSX
 routes/biznes.js          API: CRM, finanse, kursy NBP, oferty, sprzedaż, reklamacje, dokumenty eksportowe, Knowledge Base
 routes/szkolenia.js       API Platformy Szkoleniowej
 routes/automatyzacje.js   API: dzienny raport, reguły, tokeny, poczta, kolejka (administratorzy)
@@ -454,7 +482,7 @@ db/007_etap3_…sql         etap 3: platforma szkoleniowa
 db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje, tokeny, oceny agentów
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
-public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, logo, ikony, manifest PWA, service worker
+public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), logo, ikony, manifest PWA, service worker (cache + push)
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
 public/logos/             logo działów: podzielniki.png (Podzielniki i Montaże), express-parts.png (Sprzedaż części i eksport),
                           ubezpieczenia.png (Ubezpieczenia) – kafelki wyboru działu, nagłówek strony działu i dokumenty PDF działu
@@ -465,6 +493,7 @@ test/smoke.js             testy logowania, ról i etapu 1 (npm test)
 test/etap2.js             testy etapu 2, w tym tryb rzeczywisty na atrapie API Anthropic
 test/etap3.js             testy etapu 3 (działy, CRM, finanse, KB, szkolenia; atrapa API NBP)
 test/etap4.js             testy etapu 4 (lokalny SMTP, atrapy n8n i Langfuse)
+test/fundament.js         testy rozbudowy działu 1, etap 1 (konta, zasięg montera, powiadomienia, push, anulowanie finansów, eksport XLSX)
 ```
 
 ## Konta startowe

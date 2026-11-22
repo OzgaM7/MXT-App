@@ -3,7 +3,7 @@ const express = require('express'), cookieParser = require('cookie-parser'), bcr
   crypto = require('crypto'), path = require('path');
 const { pool } = require('./db');
 const { audit } = require('./lib/audit');
-const { permsOf } = require('./lib/rbac');
+const { permsOf, rolesOf, ROLES } = require('./lib/rbac');
 
 const PORT = +process.env.PORT || 3000;
 const SESSION_DAYS = +process.env.SESSION_DAYS || 30;
@@ -49,11 +49,12 @@ async function currentUser(req) {
   const token = req.cookies[COOKIE];
   if (!token || typeof token !== 'string' || token.length > 100) return null;
   const r = await pool.query(
-    `SELECT u.id, u.login, u.role, u.must_change_password FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = $1 AND s.expires_at > now()`, [sha(token)]);
+    `SELECT u.id, u.login, u.role, u.extra_roles, u.full_name, u.must_change_password FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > now() AND u.is_active`, [sha(token)]);
   return r.rows[0] || null;
 }
-const pub = u => ({ id: u.id, login: u.login, role: u.role, permissions: permsOf(u), mustChangePassword: u.must_change_password });
+const pub = u => ({ id: u.id, login: u.login, fullName: u.full_name || '', role: u.role, roles: rolesOf(u), roleLabels: rolesOf(u).map(r => ROLES[r] || r),
+  permissions: permsOf(u), mustChangePassword: u.must_change_password });
 
 app.post('/api/login', async (req, res, next) => {
   try {
@@ -63,7 +64,7 @@ app.post('/api/login', async (req, res, next) => {
     const t = tries.get(key) || { n: 0, ts: Date.now() };
     if (t.n >= 10) return res.status(429).json({ error: 'Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut.' });
 
-    const r = await pool.query('SELECT id, login, role, password_hash, must_change_password FROM users WHERE lower(login) = $1', [login]);
+    const r = await pool.query('SELECT id, login, role, extra_roles, full_name, password_hash, must_change_password, is_active FROM users WHERE lower(login) = $1', [login]);
     const u = r.rows[0];
     const ok = await bcrypt.compare(password, u ? u.password_hash : DUMMY_HASH);
     if (!u || !ok) {
@@ -72,6 +73,11 @@ app.post('/api/login', async (req, res, next) => {
       return res.status(401).json({ error: BAD_LOGIN });
     }
     tries.delete(key);
+    // Konto wyłączone przez administratora (np. pracownik odszedł): dane zostają, logowanie zablokowane.
+    if (!u.is_active) {
+      await audit(req, 'logowanie', { status: 'odmowa', details: { login, powod: 'konto nieaktywne' } });
+      return res.status(403).json({ error: 'Konto jest wyłączone. Skontaktuj się z administratorem.' });
+    }
 
     const token = crypto.randomBytes(32).toString('base64url');
     await pool.query(`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + make_interval(days => $3))`,

@@ -71,7 +71,7 @@ const PDF_MIN = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').t
     const kk = (await call('d1/kontrakty', null, K)).j.find(x => x.id === kt.id); eq(kk.zafakturowano, 12000); eq(kk.do_zafakturowania, 12000); eq(kk.zaplacono, 0);
     const fs1 = (await call('finanse/podsumowanie', null, K)).j; ok(fs1.invoices.po_terminie >= 1, 'faktura po terminie'); eq(fs1.months.length, 12);
     const fin = (await call('finanse?building_id=' + bud.id, null, U)).j;
-    eq((await call('finanse/' + fin[0].id, null, U, 'DELETE')).s, 403, 'usuwanie finansów tylko admin');
+    eq((await call('finanse/' + fin[0].id + '/anuluj', { powod: 'test uprawnień' }, U)).s, 403, 'anulowanie wpisów finansowych tylko admin');
 
     // --- kursy walut (NBP) ---
     eq((await call('kursy/reczny', { code: 'EUR', rate_pln: 4, effective_date: nbpDate }, U)).s, 403, 'kurs ręczny tylko admin');

@@ -6,7 +6,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'uzytkowni
 DO $$ BEGIN
   ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('administrator', 'uzytkownik'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-UPDATE users SET role = 'administrator' WHERE login IN ('m.ozga', 'p.krajewski') AND role <> 'administrator';
+-- Role startowe nadawane tylko przy pierwszej instalacji: po migracji 010 (zarządzanie kontami) role ustawia administrator
+-- i ponowne uruchomienie migracji nie może ich nadpisać.
+UPDATE users SET role = 'administrator' WHERE login IN ('m.ozga', 'p.krajewski') AND role <> 'administrator'
+  AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'extra_roles');
 
 -- ---------- działy ----------
 CREATE TABLE IF NOT EXISTS departments (

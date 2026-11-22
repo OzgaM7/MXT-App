@@ -19,6 +19,8 @@
   <script src="/dzial2.js" defer></script>
   <script src="/szkolenia.js" defer></script>
   <script src="/etap4.js" defer></script>
+  <script src="/konta.js" defer></script>
+  <script src="/teren.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -26,6 +28,10 @@
   <div class="userbar" id="userbar" hidden>
     <span class="userbar-name" id="userbar-name"></span>
     <span class="role-chip" id="userbar-role" hidden></span>
+    <button type="button" class="btn btn-ghost bell" id="bell" aria-label="Powiadomienia" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <span class="bell-n" id="bell-n" hidden></span>
+    </button>
     <button type="button" class="btn btn-ghost" id="menu-toggle" aria-expanded="false" aria-controls="menu">Menu</button>
     <button type="button" class="btn btn-ghost" id="logout">Wyloguj</button>
   </div>

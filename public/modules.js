@@ -37,15 +37,19 @@
   };
   const TABS = ['/command-center', '/zadania', '/ai-board', '/ai-workforce', '/wnioski', '/akceptacje', '/bezpieczenstwo', '/ustawienia-ai'];
 
+  // Trasa bez `perm` jest dostępna dla każdego zalogowanego (np. Powiadomienia); o danych i tak decyduje serwer.
+  const allowed = (u, def) => !def.perm || (u.permissions || []).includes(def.perm);
+  const MENU_EXTRA = [];
   function menu(u) {
-    const items = [{ label: 'Wybór działu', path: '/dzialy' }];
-    for (const p of TABS) if ((u.permissions || []).includes(ROUTES[p].perm)) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
+    const items = (u.permissions || []).includes('departments.view') ? [{ label: 'Wybór działu', path: '/dzialy' }] : [];
+    for (const p of TABS) if (allowed(u, ROUTES[p])) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
+    for (const p of MENU_EXTRA) if (allowed(u, ROUTES[p]) && !TABS.includes(p)) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
     items.push({ label: 'Zmień hasło', path: '/zmiana-hasla' });
     return items;
   }
 
   function frame(root, path, title, lead, actions) {
-    const tabs = TABS.filter(p => has(ROUTES[p].perm)).map(p =>
+    const tabs = TABS.filter(p => allowed(me(), ROUTES[p])).map(p =>
       `<button type="button" class="tab${p === path ? ' tab-on' : ''}" data-go="${p}"${p === path ? ' aria-current="page"' : ''}>${esc(ROUTES[p].title)}</button>`).join('');
     root.innerHTML = `
       <nav class="modnav" aria-label="Moduły">${tabs}</nav>
@@ -62,10 +66,10 @@
   async function render(path, root) {
     const def = ROUTES[path], seq = ++renderSeq;
     root.classList.remove('mod-in'); void root.offsetWidth; root.classList.add('mod-in');
-    if (!has(def.perm)) {
-      root.innerHTML = `<div class="forbidden"><h1 class="mod-title">Brak dostępu</h1><p>Moduł „${esc(def.title)}” jest dostępny tylko dla administratorów.</p>
-        <button type="button" class="btn btn-secondary" data-go="/command-center">Przejdź do Command Center</button></div>`;
-      root.querySelector('[data-go]').addEventListener('click', () => go('/command-center'));
+    if (!allowed(me(), def)) {
+      root.innerHTML = `<div class="forbidden"><h1 class="mod-title">Brak dostępu</h1><p>Twoje konto nie ma uprawnień do modułu „${esc(def.title)}”.${def.admin ? ' Moduł jest dostępny tylko dla administratorów.' : ''}</p>
+        <button type="button" class="btn btn-secondary" data-go="/">Przejdź do strony startowej</button></div>`;
+      root.querySelector('[data-go]').addEventListener('click', () => go('/'));
       return;
     }
     try { await def.render(root, path, () => seq === renderSeq); }
@@ -76,7 +80,7 @@
   }
 
   // ---------- okno dialogowe ----------
-  function modal(title, bodyHtml, { submit = 'Zapisz', danger = false, onSubmit, wide = false } = {}) {
+  function modal(title, bodyHtml, { submit = 'Zapisz', danger = false, onSubmit, wide = false, cancel = '' } = {}) {
     const m = document.getElementById('modal'), box = document.getElementById('modal-box');
     box.classList.toggle('modal-wide', wide);
     box.innerHTML = `<form class="modal-form" novalidate>
@@ -84,7 +88,7 @@
       <div class="modal-content">${bodyHtml}</div>
       <p class="form-error" hidden></p>
       <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" data-close>${onSubmit ? 'Anuluj' : 'Zamknij'}</button>
+        <button type="button" class="btn btn-secondary" data-close>${esc(cancel || (onSubmit ? 'Anuluj' : 'Zamknij'))}</button>
         ${onSubmit ? `<button type="submit" class="btn ${danger ? 'btn-danger' : 'btn-primary'}">${esc(submit)}</button>` : ''}
       </div></form>`;
     const form = box.querySelector('form'), err = box.querySelector('.form-error');
@@ -390,7 +394,7 @@
     const body = frame(root, path, 'Security & Audit', 'Rejestr operacji użytkowników i agentów AI oraz wyłącznik bezpieczeństwa.');
     const reload = () => render(path, root);
     const q = new URLSearchParams(Object.entries(auditFilter).filter(([, v]) => v));
-    const [stop, logs, M, accounts] = await Promise.all([api('security/agents-stop'), api('audit?' + q), meta(), api('konta')]);
+    const [stop, logs, M] = await Promise.all([api('security/agents-stop'), api('audit?' + q), meta()]);
     if (!alive()) return;
     const roles = Object.keys(M.roles);
     body.innerHTML = `
@@ -413,16 +417,14 @@
         ${logs.length === 100 ? '<button type="button" class="btn btn-secondary btn-sm" id="more">Pokaż starsze</button>' : ''}
         ${logs.length ? '' : '<p class="empty-inline">Brak wpisów dla wybranych filtrów.</p>'}
       </section>
-      <section class="panel"><h2 class="panel-title">Konta</h2>
-        <div class="table-wrap"><table class="table"><thead><tr><th>Login</th><th>Rola</th><th>Hasło</th><th>Ostatnie logowanie</th><th class="num">Sesje</th><th></th></tr></thead><tbody>
-        ${accounts.map(a => `<tr><td><b>${esc(a.login)}</b></td><td>${esc(M.roles[a.role])}</td><td>${a.must_change_password ? chip('warn', 'startowe / tymczasowe') : chip('ok', 'ustawione przez użytkownika')}</td>
-          <td>${esc(fdt(a.last_login))}</td><td class="num">${esc(a.sessions)}</td><td>${a.id === me().id ? '<span class="muted small">Twoje konto</span>' : `<button type="button" class="btn btn-ghost btn-sm" data-reset="${a.id}" data-login="${esc(a.login)}">Resetuj hasło</button>`}</td></tr>`).join('')}
-        </tbody></table></div><p class="muted small">Reset nadaje hasło tymczasowe (pokazywane raz) i wylogowuje konto. Pracownik ustawi własne hasło przy najbliższym logowaniu.</p></section>
+      <section class="panel panel-link"><h2 class="panel-title">Konta pracowników</h2>
+        <p class="muted">Zakładanie kont, role, powiązanie z instalatorami, wyłączanie kont i reset hasła są w module „Konta i role”.</p>
+        <button type="button" class="btn btn-secondary btn-sm" data-go-konta>Przejdź do kont</button></section>
       <section class="panel"><h2 class="panel-title">Role i uprawnienia</h2>
         <div class="table-wrap"><table class="table"><thead><tr><th>Uprawnienie</th>${roles.map(r => `<th class="c">${esc(M.roles[r])}</th>`).join('')}</tr></thead><tbody>
         ${Object.entries(M.permissions).map(([k, p]) => `<tr><td>${esc(p.label)}</td>${roles.map(r => `<td class="c">${p.roles.includes(r) ? '<b class="txt-ok">TAK</b>' : '<span class="muted">NIE</span>'}</td>`).join('')}</tr>`).join('')}
         </tbody></table></div>
-        <p class="muted small">Konta: ${M.users.map(u => esc(u.login) + ' – ' + esc(M.roles[u.role])).join(', ')}.</p></section>`;
+        <p class="muted small">Konto z kilkoma rolami ma sumę ich uprawnień. Aktywne konta: ${M.users.filter(u => u.is_active !== false).map(u => esc(u.login) + ' – ' + [u.role, ...(u.extra_roles || [])].map(r => esc(M.roles[r] || r)).join(' + ')).join(', ')}.</p></section>`;
     body.querySelector('#kill').addEventListener('click', () => {
       const stopping = !stop.stopped;
       modal(stopping ? 'Zatrzymać wszystkich agentów?' : 'Wznowić pracę agentów?', `
@@ -434,12 +436,7 @@
         toast(stopping ? 'Agenci zatrzymani.' : 'Agenci wznowieni.'); reload();
       } });
     });
-    body.querySelectorAll('[data-reset]').forEach(b => b.addEventListener('click', () => modal('Zresetować hasło konta ' + b.dataset.login + '?',
-      '<p>Konto zostanie wylogowane ze wszystkich urządzeń. Otrzymasz hasło tymczasowe do przekazania pracownikowi – przy logowaniu ustawi własne.</p>',
-      { submit: 'Resetuj hasło', danger: true, onSubmit: async () => {
-        const r = await api('konta/' + b.dataset.reset + '/reset-hasla', {});
-        setTimeout(() => modal('Hasło tymczasowe: ' + r.login, `<p>${esc(r.info)}</p><p class="mono sel token-box">${esc(r.temporary_password)}</p>`, {}), 50); reload();
-      } })));
+    body.querySelector('[data-go-konta]').addEventListener('click', () => go('/konta'));
     body.querySelector('#af').addEventListener('submit', e => {
       e.preventDefault(); const f = e.target;
       auditFilter.q = val(f, 'q').trim(); auditFilter.status = val(f, 'status'); auditFilter.actor_type = val(f, 'actor_type'); reload();
@@ -755,9 +752,11 @@
   new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(paint))).observe(document.documentElement, { childList: true, subtree: true });
 
   // Rejestracja modułów z innych plików (działy, CRM, finanse, wiedza, szkolenia) i wspólne komponenty UI.
-  function register(path, def, { tab = false, after = null } = {}) {
+  // tab: zakładka w nawigacji modułów (i pozycja w menu); menu: tylko pozycja w menu (np. Powiadomienia).
+  function register(path, def, { tab = false, after = null, menu: inMenu = false } = {}) {
     ROUTES[path] = def;
     if (tab && !TABS.includes(path)) { const i = after ? TABS.indexOf(after) : -1; i >= 0 ? TABS.splice(i + 1, 0, path) : TABS.push(path); }
+    if (inMenu && !MENU_EXTRA.includes(path)) MENU_EXTRA.push(path);
   }
   // Ramka strony działu: logo (z ekranu), etykieta „Dział”, nazwa, „Powrót do wyboru działu”, zakładki działu.
   function deptFrame(root, title, tabs, active, onTab, lead) {

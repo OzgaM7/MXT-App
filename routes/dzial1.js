@@ -8,6 +8,8 @@ const { requirePerm } = require('../lib/rbac');
 const docs = require('../lib/docs');
 const pdf = require('../lib/pdf');
 const { wrap, idParam, V, bad, patchSql, sendPdf } = require('./_util');
+const { notify } = require('../lib/notify');
+const { usersOfCrew } = require('../lib/scope');
 
 const r = express.Router();
 const use = requirePerm('tasks.use');
@@ -75,8 +77,14 @@ r.get('/urzadzenia', use, wrap(async (req, res) => {
   if (req.query.building_id) { p.push(V.uuid(req.query.building_id)); w.push(`d.building_id = $${p.length}`); }
   if (req.query.q) { p.push('%' + String(req.query.q).slice(0, 60) + '%'); w.push(`(d.serial_no ILIKE $${p.length} OR d.model ILIKE $${p.length} OR d.location ILIKE $${p.length})`); }
   if (DEV_TYPES.includes(req.query.typ)) { p.push(req.query.typ); w.push(`d.type = $${p.length}`); }
+  if (['magazyn', 'zamontowane', 'zdemontowane', 'wadliwe'].includes(req.query.status)) { p.push(req.query.status); w.push(`d.status = $${p.length}`); }
+  const W = w.length ? 'WHERE ' + w.join(' AND ') : '';
+  // Stronicowanie (projekty z tysiącami podzielników): ?strona=N po 100 pozycji, łączna liczba w nagłówku X-Total-Count.
+  // Bez parametru strona – jak dotąd 500 ostatnich.
+  const page = Math.max(0, parseInt(req.query.strona, 10) || 0), per = 100;
   const q = await pool.query(`SELECT d.*, b.name AS building_name, b.address, i.number AS installation_number FROM devices d LEFT JOIN buildings b ON b.id = d.building_id
-    LEFT JOIN installations i ON i.id = d.installation_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY d.created_at DESC LIMIT 500`, p);
+    LEFT JOIN installations i ON i.id = d.installation_id ${W} ORDER BY d.created_at DESC, d.serial_no LIMIT ${page ? per : 500} OFFSET ${page ? (page - 1) * per : 0}`, p);
+  if (page) res.set('X-Total-Count', String((await pool.query(`SELECT count(*)::int n FROM devices d ${W}`, p)).rows[0].n));
   res.json(q.rows);
 }));
 // Dodanie jednego lub wielu urządzeń (lista numerów seryjnych – jeden na linię).
@@ -119,7 +127,7 @@ r.get('/ekipy', use, wrap(async (req, res) => {
   const [c, i] = await Promise.all([
     pool.query(`SELECT c.*, (SELECT count(*)::int FROM installations x WHERE x.crew_id = c.id AND x.status IN ('zaplanowany','w_toku') AND x.planned_date >= current_date) AS upcoming
       FROM crews c ORDER BY c.is_active DESC, c.name`),
-    pool.query('SELECT * FROM installers ORDER BY is_active DESC, name')
+    pool.query('SELECT i.*, u.login AS user_login FROM installers i LEFT JOIN users u ON u.id = i.user_id ORDER BY i.is_active DESC, i.name')
   ]);
   res.json(c.rows.map(x => ({ ...x, installers: i.rows.filter(y => y.crew_id === x.id) })).concat([{ id: null, name: 'Bez ekipy', installers: i.rows.filter(y => !y.crew_id), virtual: true }]));
 }));
@@ -151,10 +159,17 @@ r.patch('/instalatorzy/:id', idParam, use, wrap(async (req, res) => {
   if (b.crew_id !== undefined) f.crew_id = V.uuid(b.crew_id);
   for (const [k, m] of [['name', 120], ['phone', 50], ['qualifications', 500]]) if (b[k] !== undefined) f[k] = V.str(b[k], m, k === 'name', 'Imię i nazwisko');
   if (b.is_active !== undefined) f.is_active = !!b.is_active;
+  const before = (await pool.query('SELECT crew_id FROM installers WHERE id = $1', [req.params.id])).rows[0];
   const { sql, params } = patchSql('installers', req.params.id, f);
   const q = await pool.query(sql, params);
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono instalatora.');
   await audit(req, 'instalator.zmiana', { resource: 'installers', resourceId: req.params.id });
+  const i = q.rows[0];
+  if (i.user_id && f.crew_id !== undefined && before && before.crew_id !== i.crew_id) {
+    const crew = i.crew_id ? (await pool.query('SELECT name FROM crews WHERE id = $1', [i.crew_id])).rows[0] : null;
+    await notify([i.user_id], { kind: 'ekipa.przydzial', title: crew ? `Przydział do ekipy ${crew.name}` : 'Odłączono Cię od ekipy',
+      body: crew ? 'W „Moje montaże” widzisz teraz montaże tej ekipy.' : 'Nie widzisz już montaży poprzedniej ekipy.', link: '/moje-montaze' });
+  }
   res.json(q.rows[0]);
 }));
 
@@ -191,6 +206,7 @@ r.post('/montaze', use, wrap(async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [number, V.uuid(b.project_id), building, crew, date, end, V.str(b.scope, 4000), V.num(b.devices_planned, 0, 100000, 'Liczba urządzeń'),
       materials(b.materials), V.str(b.notes, 4000), req.user.id]);
     await audit(req, 'montaz.zaplanowanie', { resource: 'installations', resourceId: q.rows[0].id, details: { numer: number, termin: date }, client });
+    if (crew) await notifyCrew(client, crew, q.rows[0], 'montaz.przydzial', `Nowy montaż ${number}`);
     await client.query('COMMIT');
     res.status(201).json(q.rows[0]);
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
@@ -214,11 +230,44 @@ r.patch('/montaze/:id', idParam, use, wrap(async (req, res) => {
   if (b.materials !== undefined) f.materials = materials(b.materials);
   if (b.project_id !== undefined) f.project_id = V.uuid(b.project_id);
   const { sql, params } = patchSql('installations', req.params.id, f);
-  const q = await pool.query(sql, params);
-  if (!q.rows[0]) throw bad(404, 'Nie znaleziono montażu.');
-  await audit(req, 'montaz.zmiana', { resource: 'installations', resourceId: req.params.id, details: f });
-  res.json(q.rows[0]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const old = (await client.query('SELECT * FROM installations WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!old) throw bad(404, 'Nie znaleziono montażu.');
+    const x = (await client.query(sql, params)).rows[0];
+    await audit(req, 'montaz.zmiana', { resource: 'installations', resourceId: req.params.id, details: f, client });
+    // Powiadomienia tylko dla zmian istotnych dla ekipy (przydział, termin, anulowanie).
+    const dateChanged = String(old.planned_date) !== String(x.planned_date) || String(old.planned_end) !== String(x.planned_end);
+    if (old.crew_id !== x.crew_id) {
+      if (old.crew_id) await notifyCrew(client, old.crew_id, x, 'montaz.odwolanie', `Montaż ${x.number} przekazany innej ekipie`);
+      if (x.crew_id && x.status !== 'anulowany') await notifyCrew(client, x.crew_id, x, 'montaz.przydzial', `Nowy montaż ${x.number}`);
+    } else if (x.crew_id && x.status === 'anulowany' && old.status !== 'anulowany') {
+      await notifyCrew(client, x.crew_id, x, 'montaz.anulowanie', `Anulowano montaż ${x.number}`);
+    } else if (x.crew_id && dateChanged && x.status !== 'anulowany') {
+      await notifyCrew(client, x.crew_id, x, 'montaz.zmiana_terminu', `Zmiana terminu montażu ${x.number}`);
+    }
+    await client.query('COMMIT');
+    res.json(x);
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
+// Powiadomienie kont instalatorów ekipy o montażu (adres i termin w treści, link do „Moje montaże”).
+async function notifyCrew(client, crewId, x, kind, title) {
+  const users = await usersOfCrew(crewId, client);
+  if (!users.length) return 0;
+  const b = (await client.query('SELECT name, address, city FROM buildings WHERE id = $1', [x.building_id])).rows[0] || {};
+  // Data w formacie polskim (DD.MM.RRRR) – kolumny date przychodzą jako tekst RRRR-MM-DD albo Date.
+  const d = v => {
+    if (!v) return '';
+    const s = v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+  };
+  const when = d(x.planned_date) + (x.planned_end && String(x.planned_end) !== String(x.planned_date) ? ' – ' + d(x.planned_end) : '');
+  return notify(users, { kind, title, body: `${b.name || ''}, ${b.address || ''}${b.city ? ', ' + b.city : ''} · termin: ${when}`,
+    link: '/moje-montaze?m=' + x.id, related_type: 'installation', related_id: x.id }, { client });
+}
+
 // Protokół odbioru (PDF): zapisywany jako dokument z wersjami; montaż przechodzi w stan „odebrany”.
 r.post('/montaze/:id/protokol', idParam, use, wrap(async (req, res) => {
   const b = req.body || {}, accepted = V.str(b.accepted_by, 200, true, 'Osoba odbierająca (przedstawiciel zleceniodawcy)');

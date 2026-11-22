@@ -77,6 +77,8 @@
       return show('department');
     }
     if (p === '/witaj') return welcome();
+    // Bez dostępu do działów (np. monter) – własny ekran startowy zamiast kafelków działów.
+    if (!can('departments.view')) { const h = homePath(); if (p !== h) { history.replaceState({}, '', h); return route(); } }
     if (p !== '/dzialy') history.replaceState({}, '', '/dzialy');
     document.title = 'MXT · Wybór działu';
     show('departments');
@@ -118,10 +120,44 @@
     user = u;
     $('#userbar-name').textContent = u ? u.login : '';
     const rc = $('#userbar-role');
-    rc.hidden = !u; rc.textContent = u && u.role === 'administrator' ? 'Administrator' : 'Użytkownik';
+    rc.hidden = !u;
+    // Rola główna; przy kilku rolach – liczba dodatkowych (pełna lista w podpowiedzi).
+    const labels = u && u.roleLabels && u.roleLabels.length ? u.roleLabels : [u && u.role === 'administrator' ? 'Administrator' : 'Użytkownik'];
+    rc.textContent = labels[0] + (labels.length > 1 ? ' +' + (labels.length - 1) : '');
+    rc.title = labels.join(', ');
     rc.classList.toggle('role-admin', !!u && u.role === 'administrator');
     renderMenu();
+    bell.refresh();
   }
+  const can = p => !!user && (user.permissions || []).includes(p);
+  // Ekran startowy zależy od roli: biuro – wybór działu, monter – „Moje montaże”, pozostali – powiadomienia.
+  const homePath = () => can('departments.view') ? '/dzialy' : can('field.own') ? '/moje-montaze' : '/powiadomienia';
+
+  // ---------- dzwonek: licznik nieprzeczytanych powiadomień ----------
+  const bell = {
+    timer: null,
+    async refresh() {
+      const b = $('#bell');
+      b.hidden = !user || !!user.mustChangePassword;
+      if (b.hidden) return;
+      try {
+        const r = await fetch('/api/powiadomienia/licznik', { credentials: 'same-origin', cache: 'no-store' });
+        if (!r.ok) return;
+        const n = (await r.json()).nieprzeczytane || 0, badge = $('#bell-n');
+        badge.hidden = !n; badge.textContent = n > 99 ? '99+' : String(n);
+        b.setAttribute('aria-label', n ? `Powiadomienia: ${n} nieprzeczytanych` : 'Powiadomienia');
+      } catch (e) { /* brak sieci – licznik odświeży się później */ }
+    },
+    start() {
+      clearInterval(this.timer);
+      this.timer = setInterval(() => { if (document.visibilityState === 'visible') this.refresh(); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.refresh(); });
+      // Push dotarł, gdy aplikacja jest otwarta – service worker prosi o odświeżenie licznika.
+      if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mxt-push') this.refresh(); });
+    }
+  };
+  $('#bell').addEventListener('click', () => { closeMenu(); go('/powiadomienia'); });
+  bell.start();
 
   // ---------- menu ----------
   function renderMenu() {
@@ -163,7 +199,7 @@
       go(user.mustChangePassword ? '/zmiana-hasla' : '/witaj');
     } catch (x) {
       err.textContent = x.status === 401 ? 'Nieprawidłowy login lub hasło'
-        : x.status === 429 ? x.message
+        : x.status === 429 || x.status === 403 ? x.message
         : 'Nie udało się połączyć z serwerem. Sprawdź internet i spróbuj ponownie.';
       err.hidden = false;
       form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
@@ -183,7 +219,7 @@
   window.addEventListener('popstate', route);
 
   // Interfejs dla modułów (public/modules.js).
-  window.MXT = { api, go: p => go(p), toast, user: () => user };
+  window.MXT = { api, go: p => go(p), toast, user: () => user, bell: () => bell.refresh() };
 
   // ---------- zmiana hasła ----------
   // Te same reguły sprawdza serwer (lib/password.js) – tutaj tylko podpowiedź na żywo.
@@ -223,7 +259,7 @@
       setUser(await api('haslo', { obecne: $('#pw-current').value, nowe: $('#pw-new').value, powtorz: $('#pw-repeat').value }));
       $('#pw-form').reset();
       toast('Hasło zostało zmienione.');
-      go(forced ? '/witaj' : '/dzialy', true);
+      go(forced ? '/witaj' : homePath(), true);
     } catch (x) { err.textContent = x.message; err.hidden = false; }
     finally { btn.disabled = false; btn.textContent = 'Zmień hasło'; }
   });

@@ -22,7 +22,7 @@ const idParam = (req, res, next) => UUID.test(req.params.id) ? next() : res.stat
 r.get('/meta', requirePerm('departments.view'), wrap(async (req, res) => {
   const [d, u, ag] = await Promise.all([
     pool.query('SELECT id, name FROM departments ORDER BY sort_order'),
-    pool.query('SELECT id, login, role FROM users ORDER BY login'),
+    pool.query('SELECT id, login, full_name, role, extra_roles, is_active FROM users ORDER BY is_active DESC, login'),
     pool.query(`SELECT a.id, s.display_name, a.title, a.department_id, s.is_active FROM agents a JOIN agent_settings s ON s.agent_id = a.id ORDER BY a.sort_order`).catch(() => ({ rows: [] }))
   ]);
   res.json({
@@ -236,24 +236,13 @@ r.get('/audit', requirePerm('security.audit'), wrap(async (req, res) => {
   const q = await pool.query(`SELECT * FROM audit_logs ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY id DESC LIMIT 100`, p);
   res.json(q.rows);
 }));
-// Konta i reset hasła (np. gdy pracownik zapomniał hasła): hasło tymczasowe pokazywane raz, zmiana wymagana przy logowaniu.
-r.get('/konta', requirePerm('security.audit'), wrap(async (req, res) => {
-  const q = await pool.query(`SELECT u.id, u.login, u.role, u.must_change_password, u.created_at,
-      (SELECT max(ts) FROM audit_logs a WHERE a.actor_id = u.id::text AND a.action = 'logowanie' AND a.status = 'ok') AS last_login,
-      (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions FROM users u ORDER BY u.login`);
-  res.json(q.rows);
-}));
-r.post('/konta/:id/reset-hasla', idParam, requirePerm('security.audit'), wrap(async (req, res) => {
-  const t = (await pool.query('SELECT id, login FROM users WHERE id = $1', [req.params.id])).rows[0];
-  if (!t) throw new ops.PolicyError(404, 'Nie znaleziono konta.');
-  if (t.id === req.user.id) throw new ops.PolicyError(400, 'Własne hasło zmieniasz w Menu → Zmień hasło.');
-  const crypto = require('crypto'), A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  let temp; do { temp = Array.from(crypto.randomBytes(12), b => A[b % A.length]).join(''); } while (!/\d/.test(temp) || !/[A-Za-z]/.test(temp));
-  await pool.query('UPDATE users SET password_hash = $2, must_change_password = true WHERE id = $1', [t.id, await require('bcryptjs').hash(temp, 12)]);
-  await pool.query('DELETE FROM sessions WHERE user_id = $1', [t.id]);
-  await audit(req, 'haslo.reset', { resource: 'users', resourceId: t.id, details: { konto: t.login } });
-  res.json({ login: t.login, temporary_password: temp, info: 'Przekaż hasło tymczasowe pracownikowi bezpiecznym kanałem. Przy logowaniu ustawi własne hasło.' });
-}));
+// Konta pracowników i reset hasła: routes/konta.js (uprawnienie users.manage).
+r.use('/konta', require('./konta'));
+// Powiadomienia (każde konto, tylko własne) i widok pracowników terenowych (monter: tylko montaże własnej ekipy).
+r.use('/powiadomienia', require('./powiadomienia'));
+r.use('/moje', require('./teren'));
+// Eksport do Excela (XLSX) – zestawienia działu Podzielniki i Montaże.
+r.use('/eksport', require('./eksport'));
 
 r.get('/security/agents-stop', requirePerm('security.audit'), wrap(async (req, res) => {
   const q = await pool.query(`SELECT s.value, s.updated_at, u.login AS updated_by_login FROM system_settings s LEFT JOIN users u ON u.id = s.updated_by WHERE key = 'agents_stopped'`);

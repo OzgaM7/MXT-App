@@ -13,7 +13,10 @@
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
   const KT_ST = { oferta: 'Oferta', w_realizacji: 'W realizacji', zakonczony: 'Zakończony', rozliczony: 'Rozliczony', anulowany: 'Anulowany' };
   let tab = 'budynki';
-  const st = { q: '', devQ: '' };
+  const st = { q: '', devQ: '', devTyp: '', devSt: '', devPage: 1 };
+  // Przycisk eksportu do Excela (te same filtry co na ekranie); tylko dla ról z uprawnieniem export.xlsx.
+  const xl = (list, params = {}) => U().has('export.xlsx')
+    ? `<a class="btn btn-secondary btn-sm btn-xl" href="/api/eksport/d1/${list}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v))}" download>Eksport do Excela</a>` : '';
 
   async function page(root, path, alive) {
     const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Budynki, urządzenia, montaże, protokoły odbioru, rozliczenia i rentowność.');
@@ -68,7 +71,7 @@
         <div class="kpi ${sum.reklamacje_otwarte ? 'kpi-warn' : 'kpi-neutral'}"><span class="kpi-v">${esc(sum.reklamacje_otwarte)}</span><span class="kpi-l">Otwarte reklamacje</span></div>
         <div class="kpi kpi-neutral"><span class="kpi-v">${esc(sum.ekipy)}</span><span class="kpi-l">Aktywne ekipy</span></div></section>
       <form class="toolbar" id="bf"><label class="visually-hidden" for="bq">Szukaj</label><input id="bq" name="q" class="select-sm" placeholder="Szukaj: nazwa, adres, miasto, wspólnota" value="${esc(st.q)}">
-        <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="b-new">Nowy budynek</button></form>
+        <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="b-new">Nowy budynek</button>${xl('budynki')}</form>
       <section class="panel">${table(['Budynek', 'Wspólnota', { t: 'Lokale', num: 1 }, { t: 'Urządzenia', num: 1 }, { t: 'Montaże', num: 1 }, 'Reklamacje', { t: 'Marża', num: 1 }], list.map(b => `<tr>
         <td><button type="button" class="linkish" data-b="${b.id}">${esc(b.name)}</button><div class="muted small">${esc(b.address)}${b.city ? ', ' + esc(b.city) : ''}</div></td><td>${esc(b.customer_name || '–')}</td>
         <td class="num">${esc(b.units_count)}</td><td class="num">${esc(b.devices)}</td><td class="num">${esc(b.installations)}</td><td>${b.open_complaints ? chip('warn', b.open_complaints + ' otwarte') : '<span class="muted">–</span>'}</td>
@@ -94,17 +97,29 @@
     } });
   }
   async function urzadzenia(body, reload, alive) {
-    const list = await api('d1/urzadzenia?' + new URLSearchParams(st.devQ ? { q: st.devQ } : {}));
+    // Lista stronicowana po 100 (projekty z tysiącami podzielników); łączna liczba z nagłówka X-Total-Count.
+    const filters = { q: st.devQ, typ: st.devTyp, status: st.devSt };
+    const qs = new URLSearchParams(Object.entries({ ...filters, strona: st.devPage }).filter(([, v]) => v));
+    const resp = await fetch('/api/d1/urzadzenia?' + qs, { credentials: 'same-origin', cache: 'no-store' });
+    if (!resp.ok) { const e = new Error((await resp.json().catch(() => ({}))).error || 'Nie udało się wczytać urządzeń.'); e.status = resp.status; throw e; }
+    const list = await resp.json(), total = +resp.headers.get('X-Total-Count') || list.length, pages = Math.max(1, Math.ceil(total / 100));
     if (!alive()) return;
+    if (st.devPage > pages) { st.devPage = pages; return reload(); }
+    const filtered = !!(st.devQ || st.devTyp || st.devSt);
     body.innerHTML = `<form class="toolbar" id="df"><label class="visually-hidden" for="dq">Numer seryjny</label><input id="dq" name="q" class="select-sm" placeholder="Szukaj po numerze seryjnym, modelu, lokalizacji" value="${esc(st.devQ)}">
-        <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="d-new">Dodaj urządzenia</button></form>
+        <label class="visually-hidden" for="dt">Typ</label><select id="dt" name="typ" class="select-sm"><option value="">Każdy typ</option>${Object.entries(DEV).map(([k, v]) => `<option value="${k}"${st.devTyp === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <label class="visually-hidden" for="dst">Status</label><select id="dst" name="status" class="select-sm"><option value="">Każdy status</option>${Object.entries(DEV_ST).map(([k, v]) => `<option value="${k}"${st.devSt === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="d-new">Dodaj urządzenia</button>${xl('urzadzenia', filters)}</form>
+      <p class="muted small list-count">${filtered ? 'Znaleziono' : 'Razem'}: <b>${esc(total)}</b> ${total === 1 ? 'urządzenie' : total % 10 >= 2 && total % 10 <= 4 && (total % 100 < 12 || total % 100 > 14) ? 'urządzenia' : 'urządzeń'}${pages > 1 ? ` · strona ${st.devPage} z ${pages}` : ''}</p>
       <section class="panel">${table(['Numer seryjny', 'Typ', 'Model', 'Budynek', 'Lokalizacja', 'Montaż', 'Status'], list.map(d => `<tr>
         <td class="mono-ink">${esc(d.serial_no)}</td><td>${esc(DEV[d.type])}</td><td>${esc(d.model || '–')}</td><td>${esc(d.building_name || '–')}</td><td>${esc(d.location || '–')}</td>
         <td class="small">${esc(d.installation_number || '–')}${d.installed_at ? '<div class="muted">' + esc(fd(d.installed_at)) + '</div>' : ''}</td>
         <td><label class="visually-hidden" for="ds-${d.id}">Status</label><select class="status-select" id="ds-${d.id}" data-dev="${d.id}">${Object.entries(DEV_ST).map(([k, v]) => `<option value="${k}"${k === d.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td></tr>`),
-        st.devQ ? 'Brak urządzeń dla tego wyszukiwania.' : 'Brak urządzeń. Dodaj je przyciskiem „Dodaj urządzenia” (możesz wkleić listę numerów seryjnych).')}
-        ${list.length === 500 ? '<p class="muted small">Pokazano 500 ostatnich – zawęź wyszukiwanie.</p>' : ''}</section>`;
-    body.querySelector('#df').addEventListener('submit', e => { e.preventDefault(); st.devQ = val(e.target, 'q').trim(); reload(); });
+        filtered ? 'Brak urządzeń dla tego wyszukiwania.' : 'Brak urządzeń. Dodaj je przyciskiem „Dodaj urządzenia” (możesz wkleić listę numerów seryjnych).')}
+        ${pages > 1 ? `<nav class="pager" aria-label="Strony listy urządzeń"><button type="button" class="btn btn-secondary btn-sm" data-pg="-1"${st.devPage <= 1 ? ' disabled' : ''}>← Poprzednia</button>
+          <span class="small">Strona ${st.devPage} z ${pages}</span><button type="button" class="btn btn-secondary btn-sm" data-pg="1"${st.devPage >= pages ? ' disabled' : ''}>Następna →</button></nav>` : ''}</section>`;
+    body.querySelector('#df').addEventListener('submit', e => { e.preventDefault(); st.devQ = val(e.target, 'q').trim(); st.devTyp = val(e.target, 'typ'); st.devSt = val(e.target, 'status'); st.devPage = 1; reload(); });
+    body.querySelectorAll('[data-pg]').forEach(b => b.addEventListener('click', () => { st.devPage += Number(b.dataset.pg); reload(); }));
     body.querySelector('#d-new').addEventListener('click', () => deviceForm(null, reload));
     body.querySelectorAll('[data-dev]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/urzadzenia/' + s.dataset.dev, { status: s.value }, 'PATCH'); toast('Status urządzenia zmieniony.'); } catch (e) { toast(e.message); reload(); } }));
   }
@@ -153,7 +168,7 @@
     const byDate = {};
     for (const x of list) (byDate[x.planned_date] = byDate[x.planned_date] || []).push(x);
     const dayName = d => new Date(d + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
-    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="i-new">Zaplanuj montaż</button><span class="muted small">Od ${esc(fd(from))}. Kolizje terminów ekip są wykrywane automatycznie.</span></div>
+    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="i-new">Zaplanuj montaż</button>${xl('montaze', { od: from })}<span class="muted small">Od ${esc(fd(from))}. Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</span></div>
       ${Object.keys(byDate).length ? Object.entries(byDate).map(([d, xs]) => `<section class="panel day${d === U().today() ? ' day-today' : ''}"><h2 class="panel-title">${esc(dayName(d))}${d === U().today() ? ' · dziś' : ''}</h2>
         <div class="task-list">${xs.map(x => `<div class="task"><div class="task-main"><button type="button" class="task-title linkish" data-ie="${x.id}">${esc(x.number)} · ${esc(x.building_name)}</button>
           <span class="muted small">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''} · ekipa: ${esc(x.crew_name || 'nieprzydzielona')} · urządzenia: ${esc(x.devices_installed)}/${esc(x.devices_planned)}${x.planned_end && x.planned_end !== x.planned_date ? ' · do ' + esc(fd(x.planned_end)) : ''}${x.project_number ? ' · ' + esc(x.project_number) : ''}</span></div>
@@ -175,7 +190,7 @@
       <div class="wf-grid">${crews.filter(c => !c.virtual || c.installers.length).map(c => `<section class="panel crew${c.is_active === false ? ' crew-off' : ''}">
         <div class="panel-head"><h2 class="panel-title">${esc(c.name)}</h2>${c.virtual ? '' : chip(c.is_active ? 'aktywny' : 'wylaczony', c.is_active ? 'Aktywna' : 'Nieaktywna')}</div>
         ${c.virtual ? '' : `<p class="small">${c.leader ? 'Brygadzista: <b>' + esc(c.leader) + '</b>' : 'Brak brygadzisty'}${c.phone ? ' · <span class="sel">' + esc(c.phone) + '</span>' : ''}</p><p class="muted small">Zaplanowane montaże: ${esc(c.upcoming)}</p>`}
-        <ul class="mem-list">${c.installers.map(i => `<li><b>${esc(i.name)}</b>${i.phone ? ' · ' + esc(i.phone) : ''}${i.qualifications ? `<div class="muted small">${esc(i.qualifications)}</div>` : ''}${i.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</li>`).join('') || '<li class="muted small">Brak instalatorów.</li>'}</ul>
+        <ul class="mem-list">${c.installers.map(i => `<li><b>${esc(i.name)}</b>${i.phone ? ' · ' + esc(i.phone) : ''}${i.user_login ? ' ' + chip('ok', 'konto: ' + i.user_login) : ''}${i.qualifications ? `<div class="muted small">${esc(i.qualifications)}</div>` : ''}${i.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</li>`).join('') || '<li class="muted small">Brak instalatorów.</li>'}</ul>
         ${c.virtual ? '' : `<div class="ap-actions"><button type="button" class="btn btn-ghost btn-sm" data-ct="${c.id}">${c.is_active ? 'Dezaktywuj' : 'Aktywuj'}</button></div>`}</section>`).join('')}</div>
       ${crews.length <= 1 ? '<p class="empty-inline">Brak ekip. Dodaj pierwszą ekipę montażową.</p>' : ''}`;
     body.querySelector('#c-new').addEventListener('click', () => modal('Nowa ekipa', field('c-n', 'Nazwa', '<input id="c-n" name="name" required maxlength="100">') + `<div class="field-row">${field('c-l', 'Brygadzista', '<input id="c-l" name="leader" maxlength="100">')}${field('c-p', 'Telefon', '<input id="c-p" name="phone" maxlength="50">')}</div>`,
@@ -194,7 +209,7 @@
   async function rozliczenia(body, reload, alive) {
     const [kt, fin] = await Promise.all([api('d1/kontrakty'), api('finanse?dzial=' + DEP)]);
     if (!alive()) return;
-    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button><button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button></div>
+    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button><button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button>${xl('kontrakty')}${xl('finanse').replace('Eksport do Excela', 'Finanse działu do Excela')}</div>
       <section class="panel"><h2 class="panel-title">Kontrakty</h2>${table(['Kontrakt', 'Klient', 'Status', { t: 'Wartość', num: 1 }, { t: 'Zafakturowano', num: 1 }, { t: 'Zapłacono', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, 'Montaże'], kt.map(k => `<tr>
         <td><b>${esc(k.number)}</b><div class="small">${esc(k.title)}</div></td><td>${esc(k.customer_name || '–')}</td>
         <td><label class="visually-hidden" for="ks-${k.id}">Status</label><select class="status-select" id="ks-${k.id}" data-ks="${k.id}">${Object.entries(KT_ST).map(([s, v]) => `<option value="${s}"${s === k.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
@@ -220,7 +235,7 @@
     const max = Math.max(1, ...r.buildings.map(b => Math.abs(b.marza)));
     const row = (name, sub, x) => `<tr><td>${name}${sub ? `<div class="muted small">${sub}</div>` : ''}</td><td class="num">${esc(pln(x.przychod))}</td><td class="num">${esc(pln(x.koszt))}</td>
       <td class="num"><b class="${x.marza < 0 ? 'txt-danger' : ''}">${esc(pln(x.marza))}</b></td><td class="num">${x.marza_pct == null ? '–' : esc(x.marza_pct) + '%'}</td></tr>`;
-    body.innerHTML = `<section class="panel"><h2 class="panel-title">Rentowność budynków</h2>
+    body.innerHTML = `${xl('rentownosc') ? `<div class="toolbar">${xl('rentownosc')}</div>` : ''}<section class="panel"><h2 class="panel-title">Rentowność budynków</h2>
         <div class="hbars">${r.buildings.filter(b => b.przychod || b.koszt).map(b => `<div class="hb"><span class="hb-l">${esc(b.name)}</span><span class="hb-bar"><i class="${b.marza < 0 ? 'neg' : ''}" data-w="${Math.round(Math.abs(b.marza) / max * 100)}"></i></span><span class="hb-v">${esc(pln(b.marza))}</span></div>`).join('') || '<p class="empty-inline">Brak przychodów i kosztów przypisanych do budynków.</p>'}</div>
         ${table(['Budynek', { t: 'Przychody', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, { t: 'Marża %', num: 1 }], r.buildings.map(b => row(esc(b.name), esc(b.address), b)), '')}</section>
       <section class="panel"><h2 class="panel-title">Rentowność zleceń montażowych</h2>${table(['Zlecenie', { t: 'Przychody', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, { t: 'Marża %', num: 1 }], r.installations.map(i => row(esc(i.number), esc(i.building_name) + ' · ' + esc(fd(i.planned_date)), i)), 'Brak zleceń.')}</section>

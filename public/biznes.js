@@ -142,12 +142,17 @@
         <td>${esc(x.description || x.category || '–')}<div class="muted small">${[x.customer_name, x.building_name, x.project_number, x.installation_number].filter(Boolean).map(esc).join(' · ')}</div></td>
         <td class="small">${esc(x.invoice_no || '–')}</td><td class="num">${esc(money(x.amount, x.currency))}</td><td class="num">${esc(pln(x.amount_pln))}</td>
         <td class="small">${x.kind !== 'przychod' || !x.invoice_no ? '–' : x.paid_at ? 'zapłacono ' + esc(fd(x.paid_at)) : `${overdue ? '<b class="txt-danger">po terminie</b>' : 'do ' + esc(fd(x.due_date))} <button type="button" class="linkish" data-paid="${x.id}">Zapłacono</button>`}</td>
-        <td>${has('approvals.decide') ? `<button type="button" class="btn btn-ghost btn-sm" data-fdel="${x.id}" aria-label="Usuń wpis">Usuń</button>` : ''}</td></tr>`;
+        <td>${has('finance.cancel') ? `<button type="button" class="btn btn-ghost btn-sm" data-fdel="${x.id}" aria-label="Anuluj wpis">Anuluj</button>` : ''}</td></tr>`;
     }), 'Brak wpisów finansowych.');
     setTimeout(() => {
       box.querySelectorAll('[data-paid]').forEach(b => b.addEventListener('click', async () => { await api('finanse/' + b.dataset.paid + '/zaplacono', {}); toast('Oznaczono jako zapłacone.'); reload(); }));
-      box.querySelectorAll('[data-fdel]').forEach(b => b.addEventListener('click', () => modal('Usunąć wpis finansowy?', '<p>Wpis zostanie usunięty, a operacja zapisana w rejestrze.</p>',
-        { submit: 'Usuń', danger: true, onSubmit: async () => { await api('finanse/' + b.dataset.fdel, null, 'DELETE'); toast('Wpis usunięty.'); reload(); } })));
+      box.querySelectorAll('[data-fdel]').forEach(b => b.addEventListener('click', () => modal('Anulować wpis finansowy?',
+        `<p>Wpis zniknie z sum i zestawień. Pełna kopia zostanie w archiwum anulowanych wpisów razem z powodem, Twoim loginem i datą.</p>
+        ${field('fd-reason', 'Powód anulowania', '<input id="fd-reason" name="powod" maxlength="500" required placeholder="np. dubel faktury FV/12/2026">')}`,
+        { submit: 'Anuluj wpis', cancel: 'Wróć', danger: true, onSubmit: async f => {
+          if (val(f, 'powod').trim().length < 3) throw new Error('Podaj powód anulowania.');
+          await api('finanse/' + b.dataset.fdel + '/anuluj', { powod: val(f, 'powod') }); toast('Wpis anulowany i przeniesiony do archiwum.'); reload();
+        } })));
     });
     return html;
   }
