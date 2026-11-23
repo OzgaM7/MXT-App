@@ -8,9 +8,10 @@
   const DEP = 'podzielniki-i-montaze', PATH = '/dzial/' + DEP;
   // Menu działu w trzech grupach: planowanie (harmonogram – ekran startowy, serwisy, odczyty), rozliczenia i ewidencja.
   // Czwarty element: krótka nazwa w menu dolnym na telefonie (4 pierwsze pozycje + „Więcej”).
-  const TABS = [['harmonogram', 'Harmonogram montaży', 'Planowanie', 'Harmonogram'], ['serwisy', 'Serwisy', 'Planowanie'], ['odczyty', 'Odczyty', 'Planowanie'],
-    ['rozliczenia', 'Kontrakty i rozliczenia', 'Rozliczenia', 'Kontrakty'], ['oferty', 'Oferty', 'Rozliczenia'], ['rentownosc', 'Rentowność', 'Rozliczenia'],
-    ['ekipy', 'Ekipy i instalatorzy', 'Ewidencja', 'Ekipy'], ['budynki', 'Budynki i wspólnoty', 'Ewidencja', 'Budynki'], ['urzadzenia', 'Urządzenia', 'Ewidencja'], ['reklamacje', 'Reklamacje', 'Ewidencja']];
+  const TABS = [['harmonogram', 'Harmonogram montaży', 'Planowanie', 'Harmonogram'], ['zlecenia', 'Wszystkie zlecenia', 'Planowanie', 'Zlecenia'], ['serwisy', 'Serwisy', 'Planowanie'],
+    ['odczyty', 'Odczyty', 'Planowanie'], ['pulpit', 'Pulpit działu', 'Planowanie', 'Pulpit'],
+    ['rozliczenia', 'Projekty i rozliczenia', 'Rozliczenia', 'Projekty'], ['oferty', 'Oferty', 'Rozliczenia'], ['rentownosc', 'Rentowność', 'Rozliczenia'],
+    ['ekipy', 'Ekipy i instalatorzy', 'Ewidencja', 'Ekipy'], ['budynki', 'Budynki i lokale', 'Ewidencja', 'Budynki'], ['urzadzenia', 'Urządzenia', 'Ewidencja'], ['reklamacje', 'Reklamacje', 'Ewidencja']];
   const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplomierz: 'Ciepłomierz', modul_radiowy: 'Moduł radiowy', inny: 'Inne' };
   const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
@@ -39,7 +40,9 @@
     }).catch(() => {});
     const panel = document.createElement('div'); panel.className = 'mod-body';
     const serwisy = (...a) => window.MXT_SERWIS.officeTab(...a), odczyty = (...a) => window.MXT_ODCZYTY.tab(...a);
-    await ({ budynki, urzadzenia, harmonogram, serwisy, odczyty, ekipy, reklamacje, rozliczenia, rentownosc, oferty }[tab])(panel, reload, alive);
+    const ctx = { goTab: t => { tab = t; reload(); } };
+    const pulpit = (p, rl, al) => window.MXT_ERP.pulpit(p, rl, al, ctx), zlecenia = (p, rl, al) => window.MXT_ERP.zlecenia(p, rl, al, ctx);
+    await ({ budynki, urzadzenia, harmonogram, serwisy, odczyty, ekipy, reklamacje, rozliczenia, rentownosc, oferty, pulpit, zlecenia }[tab])(panel, reload, alive);
     if (!alive()) return;
     body.replaceChildren(panel);
     U().wsHoist(root);
@@ -76,12 +79,15 @@
     const box = modal(b.name, `<p class="muted">${esc(b.address)}${b.city ? ', ' + esc(b.city) : ''} · ${esc(b.customer_name || 'bez przypisanej wspólnoty')} · ${esc(b.units_count)} lokali${b.heating_type ? ' · ' + esc(b.heating_type) : ''}</p>
       <div class="kpis kpis-3"><div class="kpi kpi-blue"><span class="kpi-v">${esc(pln(b.przychod))}</span><span class="kpi-l">Przychody</span></div><div class="kpi kpi-neutral"><span class="kpi-v">${esc(pln(b.koszt))}</span><span class="kpi-l">Koszty</span></div>
         <div class="kpi ${b.przychod - b.koszt >= 0 ? 'kpi-ok' : 'kpi-danger'}"><span class="kpi-v">${esc(pln(b.przychod - b.koszt))}</span><span class="kpi-l">Marża budynku</span></div></div>
-      <h3 class="panel-sub">Urządzenia (${b.devices.length})</h3>${table(['Numer seryjny', 'Typ', 'Lokalizacja', 'Status', 'Montaż'], b.devices.map(d => `<tr><td class="mono-ink">${esc(d.serial_no)}</td><td>${esc(DEV[d.type])}</td><td>${esc(d.location || '–')}</td><td>${chip(d.status === 'wadliwe' ? 'deny' : d.status === 'zamontowane' ? 'ok' : 'off', DEV_ST[d.status])}</td><td class="small">${esc(d.installation_number || '–')}</td></tr>`), 'Brak urządzeń.')}
+      <div id="bc-units"><p class="muted small">Wczytywanie lokali…</p></div>
+      <h3 class="panel-sub">Urządzenia (${b.devices.length})</h3>${table(['Numer seryjny', 'Typ', 'Lokalizacja', 'Status', 'Montaż'], b.devices.map(d => `<tr><td><button type="button" class="linkish mono-ink" data-dev="${d.id}">${esc(d.serial_no)}</button></td><td>${esc(DEV[d.type])}</td><td>${esc(d.location || '–')}</td><td>${chip(d.status === 'wadliwe' ? 'deny' : d.status === 'zamontowane' ? 'ok' : 'off', DEV_ST[d.status])}</td><td class="small">${esc(d.installation_number || '–')}</td></tr>`), 'Brak urządzeń.')}
       <h3 class="panel-sub">Montaże</h3>${table(['Numer', 'Termin', 'Ekipa', 'Status', ''], b.installations.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(fd(i.planned_date))}</td><td>${esc(i.crew_name || '–')}</td><td>${chip(i.status, INST_ST[i.status])}</td><td>${i.protocol_document_id ? B().pdfLink('/api/dokumenty/' + i.protocol_document_id + '/plik', 'Protokół') : ''}</td></tr>`), 'Brak montaży.')}
       <h3 class="panel-sub">Reklamacje</h3>${table(['Numer', 'Tytuł', 'Status', 'Zgłoszono'], b.complaints.map(x => `<tr><td>${esc(x.number)}</td><td>${esc(x.title)}</td><td>${chip(x.status, B().CPL_ST[x.status])}</td><td>${esc(fd(x.reported_at))}</td></tr>`), 'Brak reklamacji.')}
       <h3 class="panel-sub">Rozliczenia</h3>${table(['Data', 'Rodzaj', 'Opis', 'Faktura', { t: 'PLN', num: 1 }], b.finance.map(x => `<tr><td>${esc(fd(x.entry_date))}</td><td>${esc(x.kind === 'przychod' ? 'Przychód' : 'Koszt')}</td><td>${esc(x.description || x.category)}</td><td>${esc(x.invoice_no || '–')}</td><td class="num">${esc(pln(x.amount_pln))}</td></tr>`), 'Brak wpisów.')}
       <div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="bc-edit">Edytuj budynek</button><button type="button" class="btn btn-secondary btn-sm" id="bc-dev">Dodaj urządzenia</button><button type="button" class="btn btn-secondary btn-sm" id="bc-fin">Dodaj fakturę / koszt</button></div>`, { wide: true });
     box.querySelector('#bc-edit').addEventListener('click', () => buildingForm(b, reload));
+    box.querySelectorAll('[data-dev]').forEach(x => x.addEventListener('click', () => window.MXT_ERP.deviceCard(x.dataset.dev, () => buildingCard(id, reload))));
+    window.MXT_ERP.unitsSection(box.querySelector('#bc-units'), b.id).catch(e => { box.querySelector('#bc-units').innerHTML = `<p class="small txt-danger">${esc(e.message)}</p>`; });
     box.querySelector('#bc-dev').addEventListener('click', () => deviceForm(b.id, reload));
     box.querySelector('#bc-fin').addEventListener('click', () => B().financeForm({ department_id: DEP, building_id: b.id }, reload));
   }
@@ -137,7 +143,7 @@
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="d-new">Dodaj urządzenia</button>${xl('urzadzenia', filters)}</form>
       <p class="muted small list-count">${filtered ? 'Znaleziono' : 'Razem'}: <b>${esc(total)}</b> ${total === 1 ? 'urządzenie' : total % 10 >= 2 && total % 10 <= 4 && (total % 100 < 12 || total % 100 > 14) ? 'urządzenia' : 'urządzeń'}${pages > 1 ? ` · strona ${st.devPage} z ${pages}` : ''}</p>
       <section class="panel">${table(['Numer seryjny', 'Typ', 'Model', 'Budynek', 'Lokalizacja', 'Montaż', 'Status'], list.map(d => `<tr>
-        <td class="mono-ink">${esc(d.serial_no)}</td><td>${esc(DEV[d.type])}</td><td>${esc(d.model || '–')}</td><td>${esc(d.building_name || '–')}</td><td>${esc(d.location || '–')}</td>
+        <td><button type="button" class="linkish mono-ink" data-devc="${d.id}">${esc(d.serial_no)}</button></td><td>${esc(DEV[d.type])}</td><td>${esc(d.model || '–')}</td><td>${esc(d.building_name || '–')}</td><td>${esc(d.location || '–')}</td>
         <td class="small">${esc(d.installation_number || '–')}${d.installed_at ? '<div class="muted">' + esc(fd(d.installed_at)) + '</div>' : ''}</td>
         <td><label class="visually-hidden" for="ds-${d.id}">Status</label><select class="status-select" id="ds-${d.id}" data-dev="${d.id}">${Object.entries(DEV_ST).map(([k, v]) => `<option value="${k}"${k === d.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td></tr>`),
         filtered ? 'Brak urządzeń dla tego wyszukiwania.' : 'Brak urządzeń. Dodaj je przyciskiem „Dodaj urządzenia” (możesz wkleić listę numerów seryjnych).')}
@@ -146,6 +152,7 @@
     body.querySelector('#df').addEventListener('submit', e => { e.preventDefault(); st.devQ = val(e.target, 'q').trim(); st.devTyp = val(e.target, 'typ'); st.devSt = val(e.target, 'status'); st.devPage = 1; reload(); });
     body.querySelectorAll('[data-pg]').forEach(b => b.addEventListener('click', () => { st.devPage += Number(b.dataset.pg); reload(); }));
     body.querySelector('#d-new').addEventListener('click', () => deviceForm(null, reload));
+    body.querySelectorAll('[data-devc]').forEach(b => b.addEventListener('click', () => window.MXT_ERP.deviceCard(b.dataset.devc, reload)));
     body.querySelectorAll('[data-dev]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/urzadzenia/' + s.dataset.dev, { status: s.value }, 'PATCH'); toast('Status urządzenia zmieniony.'); } catch (e) { toast(e.message); reload(); } }));
   }
 
@@ -182,11 +189,15 @@
       ${field('i-s', 'Zakres prac', `<textarea id="i-s" name="scope" rows="2">${esc(x ? x.scope : '')}</textarea>`)}
       <div class="field-row">${field('i-n', 'Liczba urządzeń do montażu', `<input id="i-n" name="devices_planned" type="number" min="0" value="${esc(x ? x.devices_planned : '')}">`)}</div>
       ${field('i-m', 'Lista materiałowa (jedna pozycja na linię: nazwa; ilość; jm)', `<textarea id="i-m" name="materials" rows="3" placeholder="Podzielnik elektroniczny; 48; szt.&#10;Plomba; 48; szt.">${esc(x ? matText(x.materials) : '')}</textarea>`)}
-      ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(x ? x.notes : '')}</textarea>`)}`,
+      ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(x ? x.notes : '')}</textarea>`)}
+      ${x ? `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="i-mat">Wydaj materiał z magazynu</button><button type="button" class="btn btn-secondary btn-sm" id="i-time">Czas pracy</button></div>` : ''}`,
     { submit: x ? 'Zapisz zmiany' : 'Dodaj montaż', wide: true, onSubmit: async f => {
       try { await submit(f, false); }
       catch (e) { if (/nakładanie/.test(e.message) && !x) { modal('Kolizja terminu ekipy', `<p>${esc(e.message)}</p>`, { submit: 'Dodaj mimo to', onSubmit: () => submit(f, true) }); return; } throw e; }
     } });
+    const im = document.querySelector('#modal-box #i-mat'), it = document.querySelector('#modal-box #i-time');
+    if (im) im.addEventListener('click', () => window.MXT_ERP.issueForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
+    if (it) it.addEventListener('click', () => window.MXT_ERP.timeForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
     const sel = document.querySelector('#modal-box #i-b');
     if (sel && !x) sel.addEventListener('change', () => { document.querySelector('#modal-box #i-nb').hidden = sel.value !== '__new'; });
   }
@@ -459,13 +470,14 @@
     if (!alive()) return;
     body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button><button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button>${xl('kontrakty')}${xl('finanse').replace('Eksport do Excela', 'Finanse działu do Excela')}</div>
       <section class="panel"><h2 class="panel-title">Kontrakty</h2>${table(['Kontrakt', 'Klient', 'Status', { t: 'Wartość', num: 1 }, { t: 'Zafakturowano', num: 1 }, { t: 'Zapłacono', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, 'Montaże'], kt.map(k => `<tr>
-        <td><b>${esc(k.number)}</b><div class="small">${esc(k.title)}</div>${k.document_id ? B().pdfLink('/api/dokumenty/' + k.document_id + '/plik', 'Umowa / harmonogram') : ''}</td><td>${esc(k.customer_name || '–')}</td>
+        <td><button type="button" class="linkish" data-proj="${k.id}"><b>${esc(k.number)}</b></button><div class="small">${esc(k.title)}</div>${k.document_id ? B().pdfLink('/api/dokumenty/' + k.document_id + '/plik', 'Umowa / harmonogram') : ''}</td><td>${esc(k.customer_name || '–')}</td>
         <td><label class="visually-hidden" for="ks-${k.id}">Status</label><select class="status-select" id="ks-${k.id}" data-ks="${k.id}">${Object.entries(KT_ST).map(([s, v]) => `<option value="${s}"${s === k.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
         <td class="num">${esc(pln(k.value_net))}</td><td class="num">${esc(pln(k.zafakturowano))}${k.do_zafakturowania ? `<div class="small muted">zostało ${esc(pln(k.do_zafakturowania))}</div>` : ''}</td><td class="num">${esc(pln(k.zaplacono))}</td>
         <td class="num">${esc(pln(k.koszt))}</td><td class="num"><b>${esc(pln(k.marza))}</b></td><td class="num">${esc(k.installations_done)}/${esc(k.installations)}</td></tr>`), 'Brak kontraktów.')}</section>
       <section class="panel"><h2 class="panel-title">Faktury i koszty działu</h2><div id="fin-rows"></div></section>`;
     const fr = body.querySelector('#fin-rows'); fr.innerHTML = B().financeRows(fin, reload, fr);
     body.querySelector('#f-new').addEventListener('click', () => B().financeForm({ department_id: DEP }, reload));
+    body.querySelectorAll('[data-proj]').forEach(b => b.addEventListener('click', () => window.MXT_ERP.projectCard(b.dataset.proj, reload)));
     body.querySelectorAll('[data-ks]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/kontrakty/' + s.dataset.ks, { status: s.value }, 'PATCH'); toast('Status kontraktu zmieniony.'); } catch (e) { toast(e.message); reload(); } }));
     body.querySelector('#k-new').addEventListener('click', async () => {
       const cust = await api('klienci');
@@ -494,5 +506,6 @@
   // ---------- oferty (Handlowiec) ----------
   async function oferty(body, reload) { await B().offersPanel(body, DEP, reload); }
 
+  window.MXT_D1 = { installationForm: (x, after) => installationForm(x, after || (() => {})), buildingCard: (id, after) => buildingCard(id, after || (() => {})) };
   window.MXT_MODULES.register(PATH, { title: 'Ciepłomierze i podzielniki', perm: 'departments.view', render: page });
 })();

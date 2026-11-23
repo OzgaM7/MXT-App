@@ -79,10 +79,10 @@ office.get('/', manage, wrap(async (req, res) => {
   const p = [], w = [];
   const view = req.query.widok || 'aktywne';
   const VIEWS = {
-    aktywne: `o.status NOT IN ('zatwierdzone','anulowane')`, nieprzypisane: `o.status IN ('nowe','oczekuje')`,
-    po_terminie: `o.status NOT IN ('wykonane','zatwierdzone','anulowane') AND ((o.status IN ('nowe','oczekuje') AND o.assign_due < ${S.TODAY}) OR (o.due_date < ${S.TODAY}))`,
+    aktywne: `o.status NOT IN ('zatwierdzone','rozliczone','zamkniete','anulowane')`, nieprzypisane: `o.status IN ('nowe','oczekuje')`,
+    po_terminie: `o.status NOT IN ('wykonane','zatwierdzone','rozliczone','zamkniete','anulowane') AND ((o.status IN ('nowe','oczekuje') AND o.assign_due < ${S.TODAY}) OR (o.due_date < ${S.TODAY}))`,
     w_realizacji: `o.status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta')`, do_zatwierdzenia: `o.status = 'wykonane'`,
-    zakonczone: `o.status = 'zatwierdzone'`, anulowane: `o.status = 'anulowane'`, wszystkie: 'true'
+    zakonczone: `o.status IN ('zatwierdzone','rozliczone','zamkniete')`, anulowane: `o.status = 'anulowane'`, wszystkie: 'true'
   };
   if (!VIEWS[view]) throw bad(400, 'Nieznany widok listy.');
   w.push(VIEWS[view]);
@@ -105,7 +105,7 @@ office.get('/podsumowanie', manage, wrap(async (req, res) => {
       count(*) FILTER (WHERE status IN ('nowe','oczekuje') AND assign_due >= ${S.TODAY} AND assign_due - ${S.TODAY} <= 3)::int AS przydzial_wkrotce,
       count(*) FILTER (WHERE status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta'))::int AS w_realizacji,
       count(*) FILTER (WHERE status = 'ponowna_wizyta')::int AS ponowna_wizyta,
-      count(*) FILTER (WHERE due_date < ${S.TODAY} AND status NOT IN ('wykonane','zatwierdzone','anulowane'))::int AS po_terminie_realizacji,
+      count(*) FILTER (WHERE due_date < ${S.TODAY} AND status NOT IN ('wykonane','zatwierdzone','rozliczone','zamkniete','anulowane'))::int AS po_terminie_realizacji,
       count(*) FILTER (WHERE status = 'wykonane')::int AS do_zatwierdzenia
     FROM service_orders`);
   res.json({ ...q.rows[0], termin_przydzialu_dni: (await S.settings()).assign_days });
@@ -153,7 +153,7 @@ office.get('/:id', idParam, manage, wrap(async (req, res) => {
 
 office.patch('/:id', idParam, manage, wrap(async (req, res) => {
   const x = await withOrder(req, req.params.id, null, async (client, o) => {
-    if (['zatwierdzone', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest zamknięte – nie można go edytować.');
+    if (['zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest zamknięte – nie można go edytować.');
     const f = await fields(req.body || {}, true, client);
     const keys = Object.keys(f).filter(k => String(f[k] == null ? '' : f[k]) !== String(o[k] == null ? '' : o[k] instanceof Date ? o[k].toISOString().slice(0, 10) : o[k]));
     if (!keys.length) throw bad(400, 'Brak zmian.');
@@ -239,7 +239,7 @@ office.post('/:id/zatwierdz', idParam, approve, wrap(async (req, res) => {
 office.post('/:id/anuluj', idParam, manage, wrap(async (req, res) => {
   const reason = V.str((req.body || {}).powod, 500, true, 'Powód anulowania');
   res.json(await withOrder(req, req.params.id, null, async (client, o) => {
-    if (['zatwierdzone', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest już zamknięte.');
+    if (['zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest już zamknięte.');
     const x = await S.setStatus(client, o, 'anulowane', { userId: req.user.id, note: reason, extra: { cancel_reason: reason } });
     await S.toTech(client, o, 'serwis.anulowanie', `Anulowano serwis ${o.number}`, `${S.where(o)} · ${reason}`);
     await audit(req, 'serwis.anulowanie', { resource: 'service_orders', resourceId: o.id, details: { numer: o.number, powod: reason }, client });
@@ -252,7 +252,7 @@ function shared(router, guard, scopeOf) {
   router.post('/:id/notatka', idParam, guard, wrap(async (req, res) => {
     const note = V.str((req.body || {}).notatka, 2000, true, 'Notatka');
     res.status(201).json(await withOrder(req, req.params.id, scopeOf(req), async (client, o) => {
-      if (['zatwierdzone', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest zamknięte.');
+      if (['zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest zamknięte.');
       await S.event(client, o.id, (req.body || {}).czynnosc ? 'czynnosc' : 'notatka', { note, userId: req.user.id });
       return { ok: true };
     }));
@@ -285,7 +285,7 @@ shared(office, manage, () => null);
 own.get('/', tech, wrap(async (req, res) => {
   const done = req.query.zakres === 'zakonczone';
   const q = await pool.query(`${LIST} WHERE o.assigned_to = $1 AND ${done
-      ? `o.status IN ('wykonane','zatwierdzone') AND o.completed_at >= now() - interval '60 days'`
+      ? `o.status IN ('wykonane','zatwierdzone','rozliczone','zamkniete') AND o.completed_at >= now() - interval '60 days'`
       : `o.status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta')`}
     ORDER BY ${done ? 'o.completed_at DESC' : `CASE o.priority WHEN 'pilny' THEN 0 WHEN 'wysoki' THEN 1 ELSE 2 END, coalesce(o.planned_date, o.due_date) NULLS LAST, o.number`} LIMIT 200`, [req.user.id]);
   res.json(q.rows);

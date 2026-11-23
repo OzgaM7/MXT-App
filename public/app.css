@@ -1117,3 +1117,42 @@ div.kpi { cursor: default; }
   .hm-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "obj act" "crew dev" "st st"; gap: 8px 10px; padding: 14px 12px 14px 16px; }
   .hm-obj { grid-area: obj; } .hm-crew { grid-area: crew; } .hm-dev { grid-area: dev; justify-self: end; } .hm-st { grid-area: st; } .hm-act { grid-area: act; align-self: start; }
 }
+
+/* ---------- ERP: pulpit działu, rejestr zleceń, karta projektu, lokale, odczyty urządzeń ---------- */
+.pu-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 1000px) { .pu-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } }
+.plan-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.plan-h { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-bottom: 4px; }
+.plan-h b { font-variant-numeric: tabular-nums; }
+.zl-bar .select-sm { min-width: 0; }
+.zl-bar input.select-sm { flex: 1 1 180px; }
+.pc-actions { margin: 4px 0 6px; }
+.pc-sec { margin-top: 14px; }
+.pc-sec .panel-head { margin-bottom: 4px; }
+.pc-sec .panel-sub { margin: 0; }
+.tool-list .sv-del { vertical-align: middle; }
+.bud-t input { width: 100%; min-width: 90px; font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.is-line { align-items: end; }
+.dev-form { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 6px 0 10px; }
+.dev-tl { margin-top: 4px; }
+.unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 4px 0 10px; }
+.unit { font: inherit; text-align: left; display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); cursor: pointer; min-width: 0; }
+.unit b { font-size: 14px; }
+.unit span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit:hover { border-color: var(--ink); }
+.unit-off { opacity: .55; }
+.dr-sum p { margin: 6px 0 0; }
+.dr-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+.dr-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px minmax(0, 220px); gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #efefec; }
+.dr-row:last-child { border-bottom: 0; }
+.dr-row input { font: inherit; font-size: 15px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 9px; width: 100%; min-width: 0; background: var(--surface); }
+.dr-row input[name^="v:"] { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+.dr-id { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.dr-bad { background: var(--danger-soft); }
+.dr-miss { background: var(--warn-soft); }
+.dr-imp { margin: 6px 0 10px; }
+.dr-imp summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 6px 0; }
+@media (max-width: 640px) {
+  .dr-row { grid-template-columns: minmax(0, 1fr) 110px; }
+  .dr-row input[name^="n:"] { grid-column: 1 / -1; }
+}

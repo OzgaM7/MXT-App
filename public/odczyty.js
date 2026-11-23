@@ -51,7 +51,7 @@
           <td data-label="Ostatni odczyt">${s.last_done ? esc(fd(s.last_done)) : '<span class="muted">–</span>'}${s.last_reading && s.last_reading.result === 'czesciowy' ? `<div>${chip('warn', 'częściowy: ' + s.last_reading.missing_units + ' lok.')}</div>` : ''}</td>
           <td data-label="Kolejny termin">${due(s)}</td>
           <td data-label="Odpowiedzialny" class="small">${s.assigned_to ? esc(s.assigned_name || s.assigned_login) : '<span class="txt-warn">nie przypisano</span>'}</td>
-          <td class="nowrap td-actions">${s.is_active ? `<button type="button" class="btn btn-primary btn-sm" data-done="${s.id}">Wykonano</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-open="${s.id}">Szczegóły</button></td></tr>`).join('')}
+          <td class="nowrap td-actions">${s.is_active ? `<button type="button" class="btn btn-primary btn-sm" data-done="${s.id}">Wykonano</button><button type="button" class="btn btn-secondary btn-sm" data-devread="${s.id}">Odczyty urządzeń</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-open="${s.id}">Szczegóły</button></td></tr>`).join('')}
         </tbody></table></div>` : `<p class="empty-inline">${st.widok === 'najblizsze' ? 'Brak odczytów w najbliższych 30 dniach.' : 'Brak obiektów w tym widoku.'} Dodaj obiekt przyciskiem „Dodaj obiekt”.</p>`}
         <p class="muted small list-count">Razem: <b>${esc(total)}</b>${pages > 1 ? ` · strona ${st.strona} z ${pages}` : ''}</p>
         ${pages > 1 ? `<nav class="pager" aria-label="Strony"><button type="button" class="btn btn-secondary btn-sm" data-pg="-1"${st.strona <= 1 ? ' disabled' : ''}>← Poprzednia</button>
@@ -63,6 +63,7 @@
     const set = body.querySelector('#r-set'); if (set) set.addEventListener('click', () => settingsForm(sum, reload));
     body.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', () => doneForm(list.find(s => s.id === b.dataset.done), people, reload)));
     body.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => card(b.dataset.open, people, sum, reload)));
+    body.querySelectorAll('[data-devread]').forEach(b => b.addEventListener('click', () => window.MXT_ERP.deviceReadings(b.dataset.devread)));
     const z = new URLSearchParams(location.search).get('z');
     if (z) { history.replaceState({}, '', location.pathname); card(z, people, sum, reload); }
   }
@@ -165,6 +166,7 @@
         ${s.contact ? `<dt>Kontakt</dt><dd>${esc(s.contact)}</dd>` : ''}${s.access_notes ? `<dt>Dostęp</dt><dd>${esc(s.access_notes)}</dd>` : ''}${s.notes ? `<dt>Uwagi</dt><dd class="pre-wrap">${esc(s.notes)}</dd>` : ''}</dl>
       <div class="card-actions" id="rc-actions">
         ${s.is_active ? '<button type="button" class="btn btn-primary btn-sm" data-a="done">Wykonano</button>' : ''}
+        <button type="button" class="btn btn-secondary btn-sm" data-a="devread">Odczyty urządzeń</button>
         <button type="button" class="btn btn-secondary btn-sm" data-a="edit">Edytuj</button>
         ${active && U().has('readings.admin') ? '<button type="button" class="btn btn-ghost btn-sm" data-a="undo">Cofnij ostatni odczyt</button>' : ''}</div>
       <p class="label-sm">Historia odczytów (${s.history.length})</p>
@@ -176,6 +178,7 @@
     const on = (a, fn) => { const b = box.querySelector(`[data-a="${a}"]`); if (b) b.addEventListener('click', fn); };
     on('done', () => doneForm(s, people, again));
     on('edit', () => objectForm(s, people, sum, again));
+    on('devread', () => window.MXT_ERP.deviceReadings(s.id));
     on('undo', () => modal('Cofnąć ostatni odczyt?', `<p>Odczyt z ${esc(fd(active.done_at))} zostanie oznaczony jako cofnięty (zostaje w historii), a termin wróci do ${esc(fd(active.prev_next_due))}.</p>
       ${field('u-r', 'Powód', '<input id="u-r" name="powod" required maxlength="500">')}`,
       { submit: 'Cofnij odczyt', danger: true, onSubmit: async f => { if (!val(f, 'powod').trim()) throw new Error('Podaj powód.'); await api('odczyty/' + s.id + '/cofnij', { powod: val(f, 'powod') }); toast('Odczyt cofnięty.'); again(); } }));

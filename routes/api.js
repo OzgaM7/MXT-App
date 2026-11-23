@@ -281,6 +281,12 @@ r.get('/ai-settings', requirePerm('ai.settings'), wrap(async (req, res) => {
 }));
 r.use('/ai', require('./ai'));
 
+// ---------- ERP: rejestr zleceń, projekty, lokale, urządzenia, odczyty per urządzenie, magazyn, pracownicy ----------
+r.use('/d1', require('./erp/obiekty'));   // przed ./dzial1: PATCH /d1/urzadzenia/:id z historią zmian
+r.use('/d1', require('./erp/zlecenia'));
+r.use('/magazyn', require('./erp/magazyn'));
+r.use('/', require('./erp/pracownicy'));
+
 // ---------- etap 3: działy, CRM, finanse, Knowledge Base, platforma szkoleniowa ----------
 r.use('/d1', require('./dzial1'));
 

@@ -6,8 +6,8 @@
   const esc = v => U().esc(v), api = (...a) => U().api(...a), toast = m => U().toast(m), modal = (...a) => U().modal(...a);
   const field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), chip = (...a) => U().chip(...a), fd = v => U().fd(v), fdt = v => U().fdt(v);
   const ST = { nowe: 'Nowe', oczekuje: 'Oczekuje na przydzielenie', przypisane: 'Przypisane', zaplanowane: 'Zaplanowane', w_realizacji: 'W realizacji',
-    ponowna_wizyta: 'Wymaga ponownej wizyty', wykonane: 'Wykonane', zatwierdzone: 'Zatwierdzone', anulowane: 'Anulowane' };
-  const ST_CLS = { nowe: 'warn', oczekuje: 'warn', przypisane: 'w_toku', zaplanowane: 'w_toku', w_realizacji: 'w_toku', ponowna_wizyta: 'warn', wykonane: 'ok', zatwierdzone: 'ok', anulowane: 'off' };
+    ponowna_wizyta: 'Wymaga ponownej wizyty', wykonane: 'Wykonane', zatwierdzone: 'Zatwierdzone', rozliczone: 'Rozliczone', zamkniete: 'Zamknięte', anulowane: 'Anulowane' };
+  const ST_CLS = { nowe: 'warn', oczekuje: 'warn', przypisane: 'w_toku', zaplanowane: 'w_toku', w_realizacji: 'w_toku', ponowna_wizyta: 'warn', wykonane: 'ok', zatwierdzone: 'ok', rozliczone: 'ok', zamkniete: 'off', anulowane: 'off' };
   const PRIO = { niski: 'Niski', normalny: 'Normalny', wysoki: 'Wysoki', pilny: 'Pilny' };
   const EV = { utworzenie: 'Przyjęcie zlecenia', status: 'Zmiana statusu', przydzial: 'Przydział serwisanta', edycja: 'Edycja danych', notatka: 'Notatka', czynnosc: 'Wykonana czynność', zdjecie: 'Zdjęcie' };
   const tel = p => String(p || '').replace(/[^\d+]/g, '');
@@ -22,7 +22,7 @@
     if (o.po_terminie_przydzialu) out.push(chip('deny', 'po terminie przydziału'));
     else if (o.przydzial_wkrotce) out.push(chip('warn', o.dni_do_przydzialu === 0 ? 'przydział dziś' : 'przydział za ' + days(o.dni_do_przydzialu)));
     if (o.po_terminie_realizacji) out.push(chip('deny', 'po terminie realizacji'));
-    if (o.priority === 'pilny' && !['wykonane', 'zatwierdzone', 'anulowane'].includes(o.status)) out.push(chip('deny', 'pilne'));
+    if (o.priority === 'pilny' && !['wykonane', 'zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status)) out.push(chip('deny', 'pilne'));
     return out.join(' ');
   }
   function assignInfo(o) {
@@ -104,7 +104,7 @@
   // ---------- karta zlecenia (wspólna) ----------
   function cardHtml(o, base, { office }) {
     // Kolor kropki: czerwony – anulowanie / ponowna wizyta, zielony – wykonanie, turkus – przydział, szary – pozostałe.
-    const dot = e => e.to_status === 'anulowane' || e.to_status === 'ponowna_wizyta' ? ' tl-odrzucenie' : ['wykonane', 'zatwierdzone'].includes(e.to_status) ? ' tl-wykonanie' : e.kind === 'przydzial' ? ' tl-zatwierdzenie' : '';
+    const dot = e => e.to_status === 'anulowane' || e.to_status === 'ponowna_wizyta' ? ' tl-odrzucenie' : ['wykonane', 'zatwierdzone', 'rozliczone', 'zamkniete'].includes(e.to_status) ? ' tl-wykonanie' : e.kind === 'przydzial' ? ' tl-zatwierdzenie' : '';
     const ev = o.events.map(e => `<li><span class="tl-dot${dot(e)}"></span>
       <div><b>${esc(e.kind === 'status' ? ST[e.to_status] || e.to_status : EV[e.kind] || e.kind)}</b> · ${esc(e.full_name || e.login || 'system')} · ${esc(fdt(e.created_at))}${e.note ? `<div class="tl-note">${esc(e.note)}</div>` : ''}</div></li>`).join('');
     return `
@@ -217,7 +217,7 @@
     try { o = await api('serwisy/' + id); } catch (e) { toast(e.message); return; }
     const base = 'serwisy/' + o.id, again = () => { reload(); officeCard(id, techs, reload); };
     modal('Zlecenie serwisowe ' + o.number, cardHtml(o, base, { office: true }), { wide: true });
-    const open = !['zatwierdzone', 'anulowane'].includes(o.status), assigned = ['przypisane', 'zaplanowane', 'ponowna_wizyta'].includes(o.status);
+    const open = !['zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status), assigned = ['przypisane', 'zaplanowane', 'ponowna_wizyta'].includes(o.status);
     const assignForm = () => modal(o.assigned_to ? 'Zmień serwisanta' : 'Przydziel serwisanta', `
       ${techs.length ? '' : '<p class="notice">Brak kont z rolą Serwisant.</p>'}
       ${field('a-t', 'Serwisant (w nawiasie – otwarte zlecenia)', `<select id="a-t" name="assigned_to" required>${techs.map(t => `<option value="${t.id}"${o.assigned_to === t.id ? ' selected' : ''}>${esc(t.full_name || t.login)} (${t.otwarte})</option>`).join('')}</select>`)}
@@ -236,6 +236,9 @@
       pdf: o.protocol_document_id && { html: `<a class="btn btn-secondary btn-sm" href="/api/dokumenty/${o.protocol_document_id}/plik" target="_blank" rel="noopener">Protokół PDF</a>`, run: () => {} },
       notatka: open && { html: btn('notatka', 'Dodaj notatkę'), run: () => ask('Notatka', 'Treść notatki (trafi do historii)', base + '/notatka', v => ({ notatka: v }), again) },
       foto: open && { html: btn('foto', 'Dodaj zdjęcie'), run: () => pickPhoto(base, again) },
+      // ERP: materiały z magazynu i czas pracy na zlecenie (koszty zlecenia i projektu).
+      material: !['anulowane', 'zamkniete'].includes(o.status) && window.MXT_ERP && { html: btn('material', 'Wydaj materiał'), run: () => window.MXT_ERP.issueForm({ related_type: 'service_order', related_id: o.id, title: o.number }, again) },
+      czas: !['anulowane', 'zamkniete'].includes(o.status) && window.MXT_ERP && U().has('time.own') && { html: btn('czas', 'Czas pracy'), run: () => window.MXT_ERP.timeForm({ related_type: 'service_order', related_id: o.id, title: o.number }, again) },
       edytuj: open && { html: btn('edytuj', 'Edytuj dane'), run: () => orderForm(o, techs, again) },
       anuluj: open && { html: btn('anuluj', 'Anuluj zlecenie', 'btn-ghost'), run: () => ask('Anulować zlecenie ' + o.number + '?', 'Powód anulowania', base + '/anuluj', v => ({ powod: v }), again, { danger: true, submit: 'Anuluj zlecenie' }) }
     });

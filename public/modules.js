@@ -66,7 +66,7 @@
   async function render(path, root) {
     const def = ROUTES[path], seq = ++renderSeq;
     // Strony działów mają własny układ (menu boczne) – klasa na ekranie i na body (pasek użytkownika w górnym pasku).
-    const ws = path.startsWith('/dzial/') && allowed(me(), def);
+    const ws = (path.startsWith('/dzial/') || !!def.ws) && allowed(me(), def);
     document.body.classList.toggle('ws-mode', ws);
     const scr = root.closest('.screen'); if (scr) scr.classList.toggle('screen-ws', ws);
     root.classList.remove('mod-in'); void root.offsetWidth; root.classList.add('mod-in');
@@ -103,6 +103,7 @@
     m.onclick = e => { if (e.target === m) close(); };
     form.addEventListener('submit', async e => {
       e.preventDefault(); err.hidden = true;
+      if (!onSubmit) return;   // okno tylko do podglądu (Enter w polu nie wywołuje zapisu)
       const btn = form.querySelector('[type=submit]'); btn.disabled = true;
       try { await onSubmit(form); close(); }
       catch (x) { if (x && x.keepOpen) return; err.textContent = x.message || 'Nie udało się zapisać.'; err.hidden = false; }
@@ -784,6 +785,12 @@
     rozmowy: '<path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.5 19.5 0 0 1-8.5-3 19 19 0 0 1-5.8-5.8 19.5 19.5 0 0 1-3-8.6A2 2 0 0 1 3.5 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.7a2 2 0 0 1-.5 2.1L7.5 9.8a15.5 15.5 0 0 0 5.8 5.8l1.3-1.3a2 2 0 0 1 2.1-.4c.8.3 1.8.6 2.7.7a2 2 0 0 1 1.6 1.9z"/>',
     zgloszenia: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
     integracja: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+    zlecenia: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4"/>',
+    pulpit: '<path d="M3 14a9 9 0 0 1 18 0"/><path d="M12 14l4-4M3 18h18"/>',
+    stany: '<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>', dokumenty: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13h6M9 17h6"/>',
+    dostawcy: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>', magazyny: '<path d="M3 21V9l9-6 9 6v12"/><path d="M8 21v-6h8v6"/>',
+    kartoteka: '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M14 10h4M14 14h4"/>',
+    nieobecnosci: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M9 14l6 4M15 14l-6 4"/>', czas: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     wiecej: '<path d="M4 6h16M4 12h16M4 18h16"/>', dot: '<circle cx="12" cy="12" r="3"/>',
     chev: '<path d="M6 9l6 6 6-6"/>', left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     up: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>', down: '<path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
@@ -794,7 +801,7 @@
   function deptFrame(root, title, tabs, active, onTab) {
     const slug = (location.pathname.match(/^\/dzial\/([a-z-]+)/) || [])[1] || '';
     const deps = window.MXT.departments ? window.MXT.departments() : [];
-    const dep = deps.find(d => d.slug === slug) || { slug, name: title };
+    const dep = deps.find(d => d.slug === slug) || { slug, name: title }, isDept = deps.some(d => d.slug === slug);
     const cur = tabs.find(t => t[0] === active) || tabs[0] || [active, title];
     const groups = [];
     for (const t of tabs) { const g = t[2] || ''; let G = groups.find(x => x.name === g); if (!G) groups.push(G = { name: g, items: [] }); G.items.push(t); }
@@ -803,7 +810,7 @@
     const navList = cls => groups.map(g => `<div class="ws-group">${g.name ? `<p class="ws-gname">${esc(g.name)}</p>` : ''}${g.items.map(t => item(t, cls)).join('')}</div>`).join('');
     const logo = dep.logo ? `<img class="ws-logo" src="${esc(dep.logo.src)}" width="${dep.logo.w}" height="${dep.logo.h}" alt="${esc(dep.logo.alt)}">` : '';
     const switcher = `<div class="ws-switch"><button type="button" class="ws-switch-b" data-pop aria-haspopup="true" aria-expanded="false">
-        <span class="ws-switch-t"><span class="ws-k">Dział</span><span class="ws-n">${esc(dep.name)}</span></span>${icon('chev', 'ic ic-sm')}</button>
+        <span class="ws-switch-t"><span class="ws-k">${isDept ? 'Dział' : 'Moduł'}</span><span class="ws-n">${esc(dep.name)}</span></span>${icon('chev', 'ic ic-sm')}</button>
       <div class="pop ws-switch-menu" hidden>${deps.map(d => `<button type="button" class="pop-i${d.slug === slug ? ' on' : ''}" data-go="/dzial/${esc(d.slug)}"${d.slug === slug ? ' aria-current="true"' : ''}>${esc(d.name)}</button>`).join('')}
         <button type="button" class="pop-i pop-all" data-go="/dzialy">${icon('all', 'ic ic-sm')}Wszystkie działy</button></div></div>`;
     // Menu dolne (telefon): do 5 pozycji; przy większej liczbie 4 pierwsze + „Więcej” z pełną listą.

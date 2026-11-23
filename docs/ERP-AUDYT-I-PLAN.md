@@ -104,3 +104,16 @@ Aktualizowany po każdym etapie (sekcja poniżej).
 - Asystent telefoniczny i bot bez działalności taxi (starsza wartość od bota → „inne”, dane historyczne bez zmian).
 - Nazwy działów: „Ciepłomierze i podzielniki”, „Sprzedaż części samochodowych” (adresy i identyfikatory bez zmian).
 - Migracja `db/016_erp_fundamenty.sql` (tylko dodaje). Testy: `test/erp-fundamenty.js` (51 sprawdzeń), cały zestaw 930 sprawdzeń OK, bot 35 testów OK.
+
+### Etap 4 – Ciepłomierze i podzielniki + rdzeń magazynu (zrobione)
+
+- **Wspólny rejestr zleceń** (widok `work_orders`): montaże, serwisy i odczyty z jednymi statusami (nowe → do przydzielenia → przydzielone/zaplanowane → w realizacji → wykonane → rozliczone → zamknięte), terminami, osobą/ekipą, projektem i rozliczeniem; filtry (typ, status, termin, rozliczenie, szukaj) i zapisane widoki. Zakładka „Wszystkie zlecenia”.
+- **Rozliczanie po zleceniu**: przychód w finansach z fakturą, terminem płatności, klientem, projektem i zleceniem; serwis przechodzi w „rozliczone”, potem „zamknięte”. Rozlicza rola finansowa (właściciel, księgowość, rozliczający, kierownik).
+- **Projekty**: kierownik, sposób rozliczania (po zleceniu / miesięcznie / ryczałt), budżet przychodów i kosztów w kategoriach, zespół (z powiadomieniem), zlecenia projektu, materiały, czas pracy, faktury, dokumenty, historia; **protokół miesięczny PDF** (montaże, serwisy, odczyty, materiały z miesiąca) zapisany przy projekcie.
+- **Koszty bez podwójnego liczenia** (widok `cost_ledger`): koszty z finansów + materiały wydane na zlecenia (RW − ZW, po średnim koszcie) + robocizna (godziny × stawka z dnia wpisu). Zakup na magazyn (PZ) nie jest kosztem.
+- **Magazyn** (moduł w menu): wiele magazynów (np. samochód serwisowy), pozycje (materiały, części: zamienniki, ceny, marża, minimum, dostawca), dokumenty PZ/WZ/RW/ZW/MM/INW w transakcjach z blokadą stanu (równoczesne wydania nie zejdą poniżej zera – sprawdzone testem; dodatkowo CHECK w bazie), rezerwacje, alert „poniżej minimum”, dostawcy.
+- **Lokale** w budynkach (seria 1–N), **kartoteka urządzenia** (producent, lokal, ID radiowe, legalizacja) z pełną historią: montaż, zdarzenia, zmiany statusu z powodem, serwisy, odczyty, dokumenty.
+- **Odczyty per urządzenie**: wpis na komputerze i telefonie, braki z powodem, kontrola kompletności, wykrywanie podejrzanych (spadek licznika, podzielnik > 5× mediany budynku), import z czytnika (numer seryjny lub ID radiowe; przygotowanie pod integrację z urządzeniami), protokół odczytów PDF.
+- **Pracownicy** (moduł w menu, kierownik): kartoteka kadrowa i stawka, obciążenie (serwisy, montaże, odczyty, godziny), nieobecności; **Mój czas pracy** dla wszystkich ról z ewidencją.
+- **Pulpit działu**: aktywne projekty, otwarte serwisy, odczyty w miesiącu, po terminie, zagrożone, bez przydziału, do rozliczenia, finanse miesiąca (przychód, koszty z materiałami i robocizną, wynik), wykonanie planu miesięcznego, obciążenie, rentowność projektów – wyłącznie z danych systemu.
+- Migracje `db/017_erp_operacje.sql`, `db/018_erp_magazyn.sql` (tylko dodają). Testy: `test/erp-operacje.js` (112 sprawdzeń); cały zestaw zielony; przegląd interfejsu (komputer, telefon) bez błędów.
