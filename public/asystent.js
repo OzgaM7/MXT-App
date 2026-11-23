@@ -6,7 +6,7 @@
   const esc = v => U().esc(v), api = (...a) => U().api(...a), go = p => U().go(p), toast = m => U().toast(m), modal = (...a) => U().modal(...a);
   const field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), chip = (...a) => U().chip(...a), fdt = v => U().fdt(v);
   const PATH = '/dzial/asystent-telefoniczny';
-  const TABS = [['rozmowy', 'Rozmowy'], ['zgloszenia', 'Zgłoszenia'], ['integracja', 'Integracja z botem']];
+  const TABS = [['rozmowy', 'Rozmowy'], ['zgloszenia', 'Zgłoszenia'], ['integracja', 'Integracja z botem', '', 'Integracja']];
   const DEPT = { podzielniki: 'Podzielniki', ubezpieczenia: 'Ubezpieczenia', czesci: 'Części', taxi: 'Taxi', inne: 'Inne' };
   const OUT = { rezerwacja: 'Rezerwacja', zgloszenie: 'Zgłoszenie', oddzwonienie: 'Oddzwonienie', przekazanie: 'Przekazana', informacja: 'Informacja', przerwana: 'Przerwana' };
   const OUT_CLS = { rezerwacja: 'ok', zgloszenie: 'ok', oddzwonienie: 'ok', przekazanie: 'w_toku', informacja: 'off', przerwana: 'warn' };
@@ -26,8 +26,7 @@
   async function page(root, path, alive) {
     const want = new URLSearchParams(location.search).get('tab');
     if (want && TABS.some(([k]) => k === want)) tab = want;
-    const body = U().deptFrame(root, 'Asystent telefoniczny', TABS, tab, t => { tab = t; reload(); },
-      'Asystentka AI „Ola” odbiera telefony MXT: rozmowy z transkrypcją, zgłoszenia do załatwienia i wizyty przekazane do Serwisów.');
+    const body = U().deptFrame(root, 'Asystent telefoniczny', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
     await ({ rozmowy, zgloszenia, integracja }[tab])(panel, reload, alive);

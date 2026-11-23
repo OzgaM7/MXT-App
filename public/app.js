@@ -55,6 +55,7 @@
   }
   function route() {
     clearTimeout(welcomeTimer);
+    document.body.classList.remove('ws-mode');   // przywraca je render() modułu działu
     if (!user) { document.title = 'MXT · Logowanie'; return show('login'); }
     const p = location.pathname.replace(/\/+$/, '') || '/';
     // Hasło startowe lub zresetowane: żaden inny ekran, dopóki użytkownik nie ustawi własnego hasła (serwer też to wymusza).
@@ -230,7 +231,7 @@
   window.addEventListener('popstate', route);
 
   // Interfejs dla modułów (public/modules.js).
-  window.MXT = { api, go: p => go(p), toast, user: () => user, bell: () => bell.refresh() };
+  window.MXT = { api, go: p => go(p), toast, user: () => user, bell: () => bell.refresh(), departments: () => DEPARTMENTS };
 
   // ---------- zmiana hasła ----------
   // Te same reguły sprawdza serwer (lib/password.js) – tutaj tylko podpowiedź na żywo.

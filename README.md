@@ -82,9 +82,13 @@ Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w program
 
 ## Harmonogram montaży – ekran startowy działu, import z Excela, wczytanie z umowy
 
-- **Kolejność zakładek działu** (od najważniejszej): Harmonogram montaży (otwiera się domyślnie), Serwisy, Odczyty, Kontrakty i rozliczenia, Ekipy i instalatorzy, Reklamacje, Oferty, Rentowność, Budynki i wspólnoty, Urządzenia.
-- **Na górze harmonogramu:** montaże trwające dziś, montaże w 14 dni, bez przydzielonej ekipy, czekające na protokół, serwisy do przydzielenia (z liczbą po terminie) i odczyty po terminie – kafelki serwisów i odczytów przenoszą do zakładek. Agenci AI działu są pod harmonogramem.
-- **Dodaj nowy montaż / Edytuj montaż:** przy nowym montażu budynek można wybrać z ewidencji albo dodać od razu w formularzu; przy każdym montażu jest przycisk „Edytuj”.
+- **Menu działu w trzech grupach:** Planowanie (Harmonogram montaży – otwiera się domyślnie, Serwisy, Odczyty), Rozliczenia (Kontrakty i rozliczenia, Oferty, Rentowność), Ewidencja (Ekipy i instalatorzy, Budynki i wspólnoty, Urządzenia, Reklamacje). Liczniki przy pozycjach: serwisy do przydzielenia (czerwony, gdy są po terminie), odczyty po terminie, otwarte reklamacje.
+- **Nagłówek harmonogramu:** widok Lista / Tydzień / Miesiąc, „Importuj ▾” (z Excela albo z umowy lub harmonogramu), eksport widocznych montaży do Excela (te same filtry i zakres dat), „Dodaj montaż” (na telefonie przypięty nad menu dolnym).
+- **Liczby na górze:** montaże dziś (z ekipami), najbliższe 14 dni (z liczbą urządzeń), bez ekipy, czekające na protokół, serwisy do przydziału, odczyty po terminie. Kolor tylko przy sprawach do załatwienia; zero jest szare. „Bez ekipy” i „Czekają na protokół” filtrują listę, serwisy i odczyty przenoszą do zakładek. Na telefonie zamiast nich jest panel „Wymaga uwagi”.
+- **Lista:** montaże pogrupowane po dniach („Dziś”, „Jutro”…), montaż wielodniowy trwający dziś pod „Dziś” z informacją „dzień 2 z 5”; wcześniejsze montaże w zwijanej sekcji. Filtry: ekipa (także „Bez ekipy”), status, zakres (ostatnie 14 dni i przyszłe albo wszystkie terminy). W wierszu: budynek (klik – edycja), numer, adres, ekipa albo „Przydziel ekipę”, urządzenia zamontowane/planowane, status do zmiany na miejscu, „Protokół odbioru” przy wykonanych, „Protokół PDF” przy odebranych.
+- **Tydzień i Miesiąc:** kalendarz z montażami na każdy dzień ich trwania (kolor paska = status), przejście o tydzień / miesiąc i „Dziś”; klik w dzień miesiąca otwiera jego tydzień, klik w montaż – edycję. Na telefonie tydzień to lista dni, a miesiąc – kropki przy dniach.
+- **Panele obok listy:** „Wymaga uwagi” (montaże bez ekipy, serwisy po terminie przydziału, montaże do protokołu, odczyty po terminie, otwarte reklamacje – każda pozycja prowadzi do właściwej listy) i „Ekipy dziś” (w pracy – gdzie, wolna – najbliższy montaż). Agenci AI działu są pod harmonogramem.
+- **Dodaj nowy montaż / Edytuj montaż:** przy nowym montażu budynek można wybrać z ewidencji albo dodać od razu w formularzu; edycja z nazwy budynku, ikony ołówka albo „Przydziel ekipę”.
 - **Importuj z Excela** (`routes/importy.js`, `public/montaze-import.js`):
   - szablon do pobrania (arkusz „Montaże” + instrukcja); można też wczytać własny arkusz `.xlsx` albo `.csv` (separator `;` lub `,`, UTF-8 albo Windows-1250) – nagłówki są rozpoznawane po nazwach (np. „Budynek”/„Nazwa budynku”/„Obiekt”, „Termin od”/„Data od”, „Liczba urządzeń”/„Podzielniki”), także gdy nad tabelą jest tytuł;
   - **podgląd przed zapisem:** każdy wiersz ze statusem (do importu / błąd / pominięty), błędy dat i liczb, nieznane ekipy i kontrakty, nowe budynki; **możliwe duplikaty** (ten sam budynek i termin co w harmonogramie) są pomijane – ponowny import tego samego pliku nie zdubluje montaży;
@@ -242,7 +246,11 @@ Zmienne poczty, n8n, Langfuse i `MXT_SECRET_KEY` opisuje `.env.example`.
 
 ## MXT Business OS – etap 3 (działy, CRM, finanse, Knowledge Base, Platforma Szkoleniowa)
 
-Po kliknięciu kafelka działu otwiera się jego moduł: logo, nazwa działu, przycisk „Powrót do wyboru działu” i zakładki funkcji.
+Po kliknięciu kafelka działu otwiera się jego moduł w układzie roboczym (`deptFrame` w `public/modules.js`, wspólny dla wszystkich działów):
+
+- **komputer:** z lewej menu działu – logo działu, przełącznik działu („Dział ▾”: inne działy i „Wszystkie działy”) i funkcje działu w grupach, z licznikami spraw; u góry ścieżka „Działy / dział / funkcja” i pasek użytkownika (dzwonek, Menu, Wyloguj); pod nim tytuł funkcji, podtytuł i przyciski;
+- **telefon (< 900 px):** nagłówek z logo i przełącznikiem działu, menu dolne (do 5 pozycji; przy większej liczbie 4 pierwsze i „Więcej” z pełną listą);
+- kolor zaznaczenia w menu – z logo działu (czerwień MXT, Express Parts, złoto Ubezpieczeń, zieleń Asystenta).
 
 ### Podzielniki i Montaże (`/dzial/podzielniki-i-montaze`)
 

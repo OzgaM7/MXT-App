@@ -7,14 +7,14 @@
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a), money = (a, c) => U().money(a, c);
   const pln = n => B().pln(n), table = (...a) => B().table(...a), opts = (...a) => B().opts(...a);
   const DEP = 'sprzedaz-czesci-i-eksport', PATH = '/dzial/' + DEP;
-  const TABS = [['oferty', 'Oferty'], ['kalkulacje', 'Kalkulacje wielowalutowe'], ['eksport', 'Dokumenty eksportowe i celne'], ['historia', 'Historia sprzedaży i reklamacji']];
+  const TABS = [['oferty', 'Oferty'], ['kalkulacje', 'Kalkulacje wielowalutowe', '', 'Kalkulacje'], ['eksport', 'Dokumenty eksportowe i celne', '', 'Eksport'], ['historia', 'Historia sprzedaży i reklamacji', '', 'Historia']];
   const EXP = { faktura_eksportowa: 'Faktura eksportowa (commercial invoice)', specyfikacja_wysylkowa: 'Specyfikacja wysyłkowa (packing list)', dane_celne: 'Dane do zgłoszenia celnego' };
   const INCO = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
   const SALE_ST = { w_realizacji: 'W realizacji', zrealizowana: 'Zrealizowana', anulowana: 'Anulowana' };
   let tab = 'oferty', lastCalc = null;
 
   async function page(root, path, alive) {
-    const body = U().deptFrame(root, 'Sprzedaż części i eksport', TABS, tab, t => { tab = t; reload(); }, 'Oferty, kalkulacje w walutach, dokumenty eksportowe i historia sprzedaży.');
+    const body = U().deptFrame(root, 'Sprzedaż części i eksport', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
     await ({ oferty, kalkulacje, eksport, historia }[tab])(panel, reload, alive);

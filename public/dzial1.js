@@ -6,15 +6,16 @@
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
   const pln = n => B().pln(n), table = (...a) => B().table(...a), opts = (...a) => B().opts(...a);
   const DEP = 'podzielniki-i-montaze', PATH = '/dzial/' + DEP;
-  // Kolejność według codziennej pracy: najpierw harmonogram montaży (ekran startowy działu), potem serwisy i odczyty,
-  // kontrakty, ekipy i reklamacje; ewidencja (budynki, urządzenia) na końcu.
-  const TABS = [['harmonogram', 'Harmonogram montaży'], ['serwisy', 'Serwisy'], ['odczyty', 'Odczyty'], ['rozliczenia', 'Kontrakty i rozliczenia'], ['ekipy', 'Ekipy i instalatorzy'],
-    ['reklamacje', 'Reklamacje'], ['oferty', 'Oferty'], ['rentownosc', 'Rentowność'], ['budynki', 'Budynki i wspólnoty'], ['urzadzenia', 'Urządzenia']];
+  // Menu działu w trzech grupach: planowanie (harmonogram – ekran startowy, serwisy, odczyty), rozliczenia i ewidencja.
+  // Czwarty element: krótka nazwa w menu dolnym na telefonie (4 pierwsze pozycje + „Więcej”).
+  const TABS = [['harmonogram', 'Harmonogram montaży', 'Planowanie', 'Harmonogram'], ['serwisy', 'Serwisy', 'Planowanie'], ['odczyty', 'Odczyty', 'Planowanie'],
+    ['rozliczenia', 'Kontrakty i rozliczenia', 'Rozliczenia', 'Kontrakty'], ['oferty', 'Oferty', 'Rozliczenia'], ['rentownosc', 'Rentowność', 'Rozliczenia'],
+    ['ekipy', 'Ekipy i instalatorzy', 'Ewidencja', 'Ekipy'], ['budynki', 'Budynki i wspólnoty', 'Ewidencja', 'Budynki'], ['urzadzenia', 'Urządzenia', 'Ewidencja'], ['reklamacje', 'Reklamacje', 'Ewidencja']];
   const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplomierz: 'Ciepłomierz', modul_radiowy: 'Moduł radiowy', inny: 'Inne' };
   const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
   const KT_ST = { oferta: 'Oferta', w_realizacji: 'W realizacji', zakonczony: 'Zakończony', rozliczony: 'Rozliczony', anulowany: 'Anulowany' };
-  let tab = 'harmonogram';
+  let tab = 'harmonogram', S = null;
   const st = { q: '', devQ: '', devTyp: '', devSt: '', devPage: 1 };
   // Przycisk eksportu do Excela (te same filtry co na ekranie); tylko dla ról z uprawnieniem export.xlsx.
   const xl = (list, params = {}) => U().has('export.xlsx')
@@ -24,13 +25,22 @@
     // Link z powiadomienia może wskazać zakładkę (?tab=serwisy&z=<id>).
     const want = new URLSearchParams(location.search).get('tab');
     if (want && TABS.some(([k]) => k === want)) tab = want;
-    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); }, 'Harmonogram montaży, serwisy, odczyty, kontrakty i rozliczenia, ekipy, budynki i urządzenia.');
+    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
+    // Liczby działu: KPI harmonogramu i liczniki w menu (serwisy do przydzielenia, odczyty po terminie, otwarte reklamacje).
+    S = Promise.all([api('d1/podsumowanie'), api('serwisy/podsumowanie').catch(() => null), api('odczyty/podsumowanie').catch(() => null)]);
+    S.then(([d, srv, odc]) => {
+      if (!alive()) return;
+      if (srv) U().wsBadge(root, 'serwisy', srv.nieprzypisane, srv.po_terminie_przydzialu ? 'danger' : 'warn');
+      if (odc) U().wsBadge(root, 'odczyty', odc.po_terminie, 'danger');
+      U().wsBadge(root, 'reklamacje', d.reklamacje_otwarte, 'warn');
+    }).catch(() => {});
     const panel = document.createElement('div'); panel.className = 'mod-body';
     const serwisy = (...a) => window.MXT_SERWIS.officeTab(...a), odczyty = (...a) => window.MXT_ODCZYTY.tab(...a);
     await ({ budynki, urzadzenia, harmonogram, serwisy, odczyty, ekipy, reklamacje, rozliczenia, rentownosc, oferty }[tab])(panel, reload, alive);
     if (!alive()) return;
     body.replaceChildren(panel);
+    U().wsHoist(root);
     // Agenci AI działu pod harmonogramem i ewidencją budynków – najważniejsze dane działu zostają na górze.
     if (['budynki', 'harmonogram'].includes(tab)) await B().agentsStrip(panel, DEP, 'beforeend');
   }
@@ -184,44 +194,228 @@
       toast('Protokół ' + r.number + ' (wersja ' + r.version + ') gotowy – link „Protokół PDF” przy montażu.'); reload();
     } });
   }
-  const hst = { zakres: 'biezace' };
+  // Harmonogram: lista po dniach, tydzień albo miesiąc; filtry ekipy i statusu. Zmiana widoku przerysowuje się lokalnie,
+  // a gdy potrzebne są wcześniejsze dane niż pobrane – strona pobiera je od nowa.
+  const hst = { widok: 'lista', zakres: 'biezace', ekipa: '', status: '', kursor: '' };
+  let H = null;   // { list, crews, od } – ostatnio pobrane montaże i ekipy
+  const ACTIVE = ['zaplanowany', 'w_toku'];
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const D = s => new Date(s + 'T12:00:00');
+  const addDays = (s, n) => { const d = D(s); d.setDate(d.getDate() + n); return iso(d); };
+  const todayL = () => iso(new Date());
+  const from14 = () => addDays(todayL(), -14);
+  const weekStart = s => { const d = D(s); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return iso(d); };
+  const monthStart = s => s.slice(0, 8) + '01';
+  const monthEnd = s => { const d = D(monthStart(s)); d.setMonth(d.getMonth() + 1, 0); return iso(d); };
+  const isoWeek = s => {
+    const d = D(s); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+    const w1 = new Date(d.getFullYear(), 0, 4);
+    return 1 + Math.round(((d - w1) / 864e5 - 3 + (w1.getDay() + 6) % 7) / 7);
+  };
+  const MON = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
+  const MON1 = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
+  const WD = ['niedziela', 'poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota'];
+  const WD3 = ['pon.', 'wt.', 'śr.', 'czw.', 'pt.', 'sob.', 'niedz.'];
+  const dm = s => { const d = D(s); return d.getDate() + ' ' + MON[d.getMonth()]; };
+  const ddmm = s => s.slice(8) + '.' + s.slice(5, 7);
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const plural = (n, a, b, c) => n === 1 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? b : c;
+  const nMont = n => n + ' ' + plural(n, 'montaż', 'montaże', 'montaży');
+  const rel = s => { const t = todayL(); return s === t ? 'dziś' : s === addDays(t, 1) ? 'jutro' : s === addDays(t, -1) ? 'wczoraj' : dm(s); };
+  function dayLabel(s) {
+    const t = todayL(), d = D(s), base = WD[d.getDay()] + ', ' + dm(s) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+    return s === t ? 'Dziś · ' + base : s === addDays(t, 1) ? 'Jutro · ' + base : s === addDays(t, -1) ? 'Wczoraj · ' + base : cap(base);
+  }
+  function weekLabel(ws) {
+    const we = addDays(ws, 6), a = D(ws), b = D(we);
+    const r = a.getMonth() === b.getMonth() ? a.getDate() + '–' + b.getDate() + ' ' + MON[b.getMonth()] + ' ' + b.getFullYear()
+      : a.getFullYear() === b.getFullYear() ? dm(ws) + ' – ' + dm(we) + ' ' + b.getFullYear() : dm(ws) + ' ' + a.getFullYear() + ' – ' + dm(we) + ' ' + b.getFullYear();
+    return 'Tydzień ' + isoWeek(ws) + ' · ' + r;
+  }
+  const monthLabel = s => MON1[D(s).getMonth()] + ' ' + D(s).getFullYear();
+  // Montaż wielodniowy trwa od planned_date do planned_end.
+  const span = x => [x.planned_date, x.planned_end && x.planned_end > x.planned_date ? x.planned_end : x.planned_date];
+  const covers = (x, s) => { const [a, b] = span(x); return a <= s && s <= b; };
+  const days = (a, b) => Math.round((D(b) - D(a)) / 864e5) + 1;
+  function durText(x) {
+    const [a, b] = span(x); if (a === b) return '';
+    const n = days(a, b), t = todayL();
+    return n + ' dni · do ' + ddmm(b) + (a <= t && t <= b && ACTIVE.includes(x.status) ? ' · dzień ' + days(a, t) + ' z ' + n : '');
+  }
+  const initials = n => { const w = (String(n || '').replace(/\[[^\]]*\]/g, '').match(/[\p{L}\d]+/gu) || ['?']); return (w.length > 1 ? w[0][0] + (/^\d+$/.test(w[1]) ? w[1] : w[1][0]) : w[0].slice(0, 2)).toUpperCase().slice(0, 3); };
+  const crewAv = (id, name) => `<span class="crew-av crew-av-${Math.max(0, H.crews.findIndex(c => c.id === id)) % 5}" aria-hidden="true">${esc(initials(name))}</span>`;
+  const ic = (k, c) => U().icon(k, c);
+  const cursor = () => hst.kursor || todayL();
+  // Zakres dat widoku; '' = bez dolnej granicy (lista „Wszystkie terminy”).
+  const viewRange = () => hst.widok === 'tydzien' ? [weekStart(cursor()), addDays(weekStart(cursor()), 6)]
+    : hst.widok === 'miesiac' ? [weekStart(monthStart(cursor())), addDays(weekStart(monthEnd(cursor())), 6)] : [hst.zakres === 'biezace' ? from14() : '', ''];
+  // Pobieramy 31 dni wcześniej, żeby złapać montaże wielodniowe rozpoczęte przed zakresem.
+  const fetchFrom = () => { const a = viewRange()[0]; return a === '' ? '' : addDays(a < from14() ? a : from14(), -31); };
+  const pass = x => (!hst.ekipa || (hst.ekipa === '__brak' ? !x.crew_id : x.crew_id === hst.ekipa))
+    && (!hst.status || (hst.status === 'aktywne' ? [...ACTIVE, 'wykonany'].includes(x.status) : x.status === hst.status));
+
+  function row(x) {
+    const crew = x.crew_id ? `<span class="crew-chip">${crewAv(x.crew_id, x.crew_name)}<span>${esc(x.crew_name)}</span></span>`
+      : ACTIVE.includes(x.status) ? `<button type="button" class="hm-assign" data-ie="${x.id}">Przydziel ekipę</button>` : '<span class="muted">–</span>';
+    const st = x.status === 'odebrany' ? `<span class="hm-done">${chip('odebrany', 'Odebrany')}${x.protocol_document_id ? B().pdfLink('/api/dokumenty/' + x.protocol_document_id + '/plik', 'Protokół PDF') : ''}</span>`
+      : `<label class="visually-hidden" for="is-${x.id}">Status montażu ${esc(x.number)}</label><select class="status-select hm-ss st-${esc(x.status)}" id="is-${x.id}" data-is="${x.id}">${Object.entries(INST_ST).filter(([k]) => k !== 'odebrany').map(([k, v]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${v}</option>`).join('')}</select>${x.status === 'wykonany' ? `<button type="button" class="btn btn-primary btn-sm" data-ip="${x.id}">Protokół odbioru</button>` : ''}`;
+    const meta = [durText(x), x.project_number && esc(x.project_number)].filter(Boolean).join(' · ');
+    return `<article class="hm-row hm-${esc(x.status)}">
+      <div class="hm-obj"><button type="button" class="hm-name" data-ie="${x.id}">${esc(x.building_name)}</button> <span class="hm-no">${esc(x.number)}</span>
+        <span class="hm-addr">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''}</span>${meta ? `<span class="hm-meta">${meta}</span>` : ''}</div>
+      <div class="hm-crew">${crew}</div>
+      <div class="hm-dev" title="Urządzenia zamontowane / planowane"><b>${esc(x.devices_installed)}/${esc(x.devices_planned || 0)}</b> urz.</div>
+      <div class="hm-st">${st}</div>
+      <div class="hm-act"><button type="button" class="hm-edit" data-ie="${x.id}" aria-label="Edytuj montaż ${esc(x.number)}" title="Edytuj">${ic('edit')}</button></div>
+    </article>`;
+  }
+  const dayGroup = (d, xs) => `<section class="hm-day${d === todayL() ? ' hm-today' : ''}"><h3 class="hm-dh"><span>${esc(dayLabel(d))}</span><span class="hm-dn">${nMont(xs.length)}</span></h3>${xs.map(row).join('')}</section>`;
+  function listHtml(xs) {
+    // Montaż trwający dziś (rozpoczęty wcześniej) pokazujemy pod „Dziś”; przeszłe – w zwijanej sekcji na końcu.
+    const t = todayL(), up = {}, past = {};
+    for (const x of xs) {
+      const [a, b] = span(x), key = a < t && b >= t ? t : a;
+      ((key >= t ? up : past)[key] = (key >= t ? up : past)[key] || []).push(x);
+    }
+    const u = Object.keys(up).sort(), p = Object.keys(past).sort().reverse(), nPast = p.reduce((s, d) => s + past[d].length, 0);
+    if (!u.length && !p.length) return `<p class="hm-empty">${hst.ekipa || hst.status ? 'Brak montaży dla wybranych filtrów.' : 'Brak montaży w tym zakresie. Dodaj montaż, zaimportuj listę z Excela albo wczytaj umowę lub harmonogram.'}</p>`;
+    return (u.length ? u.map(d => dayGroup(d, up[d])).join('') : '<p class="hm-empty">Brak zaplanowanych montaży od dziś.</p>')
+      + (p.length ? `<details class="hm-past"${!u.length || hst.status === 'wykonany' ? ' open' : ''}><summary>Wcześniejsze montaże (${nPast})</summary>${p.map(d => dayGroup(d, past[d])).join('')}</details>` : '');
+  }
+  const card = x => `<button type="button" class="hm-card hm-${esc(x.status)}" data-ie="${x.id}"><span class="hm-card-n">${esc(x.building_name)}</span><span class="hm-card-s">${x.crew_name ? esc(x.crew_name) : '<b>bez ekipy</b>'} · ${esc(x.devices_planned || 0)} urz.</span></button>`;
+  function weekHtml(xs) {
+    const ws = weekStart(cursor()), t = todayL();
+    return `<div class="hm-week">${[0, 1, 2, 3, 4, 5, 6].map(i => {
+      const d = addDays(ws, i), its = xs.filter(x => covers(x, d));
+      return `<section class="hm-wd${d === t ? ' hm-today' : ''}${i > 4 ? ' hm-we' : ''}" aria-label="${esc(dayLabel(d))}"><div class="hm-wdh"><span>${WD3[i]}</span><b>${D(d).getDate()}</b>${its.length ? `<span class="hm-wdc">${its.length}</span>` : ''}</div>
+        <div class="hm-wdb">${its.map(card).join('') || '<span class="hm-free">brak montaży</span>'}</div></section>`;
+    }).join('')}</div>`;
+  }
+  function monthHtml(xs) {
+    const k = cursor(), [gs, ge] = viewRange(), t = todayL();
+    let cells = '';
+    for (let d = gs; d <= ge; d = addDays(d, 1)) {
+      const its = xs.filter(x => covers(x, d)), out = d.slice(0, 7) !== k.slice(0, 7);
+      cells += `<div class="hm-md${out ? ' hm-out' : ''}${d === t ? ' hm-today' : ''}${its.length ? ' hm-has' : ''}"><button type="button" class="hm-mdn" data-day="${d}" aria-label="${esc(dayLabel(d))}: ${esc(nMont(its.length))}. Pokaż tydzień">${D(d).getDate()}</button>
+        ${its.slice(0, 3).map(x => `<button type="button" class="hm-me hm-${esc(x.status)}" data-ie="${x.id}" title="${esc(x.number + ' · ' + x.building_name + (x.crew_name ? ' · ' + x.crew_name : ' · bez ekipy'))}">${esc(x.building_name)}</button>`).join('')}
+        ${its.length > 3 ? `<button type="button" class="hm-more" data-day="${d}">+${its.length - 3} więcej</button>` : ''}</div>`;
+    }
+    return `<div class="hm-month"><div class="hm-mh" aria-hidden="true">${WD3.map(w => `<span>${w}</span>`).join('')}</div><div class="hm-mg">${cells}</div></div>`;
+  }
+
   async function harmonogram(body, reload, alive) {
-    const from = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
-    // Ekran startowy działu: najważniejsze liczby (montaże, serwisy, odczyty) + harmonogram.
-    const [list, sum, srv, odc] = await Promise.all([api('d1/montaze' + (hst.zakres === 'biezace' ? '?od=' + from : '')), api('d1/podsumowanie'),
-      api('serwisy/podsumowanie').catch(() => null), api('odczyty/podsumowanie').catch(() => null)]);
+    const od = fetchFrom();
+    const [list, crews, [sum, srv, odc]] = await Promise.all([api('d1/montaze' + (od ? '?od=' + od : '')), api('d1/ekipy'), S]);
     if (!alive()) return;
-    const byDate = {};
-    for (const x of list) (byDate[x.planned_date] = byDate[x.planned_date] || []).push(x);
-    const dayName = d => new Date(d + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
-    const kpi = (label, v, tone, to) => `<button type="button" class="kpi kpi-${v ? tone : 'neutral'}"${to ? ` data-tab="${to}"` : ' disabled'}><span class="kpi-v">${esc(v)}</span><span class="kpi-l">${esc(label)}</span></button>`;
-    body.innerHTML = `<section class="kpis">
-        ${kpi('Montaże trwające dziś', sum.trwajace, 'blue')}${kpi('Montaże w 14 dni', sum.montaze_14d, 'blue')}
-        ${kpi('Bez przydzielonej ekipy', sum.bez_ekipy, 'warn')}${kpi('Czekają na protokół odbioru', sum.do_odbioru, 'warn')}
-        ${srv ? kpi('Serwisy do przydzielenia' + (srv.po_terminie_przydzialu ? ` (po terminie: ${srv.po_terminie_przydzialu})` : ''), srv.nieprzypisane, srv.po_terminie_przydzialu ? 'danger' : 'warn', 'serwisy') : ''}
-        ${odc ? kpi('Odczyty po terminie', odc.po_terminie, 'danger', 'odczyty') : ''}</section>
-      <div class="toolbar toolbar-main"><button type="button" class="btn btn-primary" id="i-new">Dodaj nowy montaż</button>
-        <button type="button" class="btn btn-secondary" id="i-xls">Importuj z Excela</button>
-        <button type="button" class="btn btn-secondary" id="i-doc">Wczytaj z umowy / harmonogramu</button>${xl('montaze', hst.zakres === 'biezace' ? { od: from } : {})}</div>
-      <div class="seg seg-wrap" role="tablist" aria-label="Zakres harmonogramu">
-        <button type="button" class="seg-b${hst.zakres === 'biezace' ? ' seg-on' : ''}" data-z="biezace" role="tab" aria-selected="${hst.zakres === 'biezace'}">Bieżące (od ${esc(fd(from))})</button>
-        <button type="button" class="seg-b${hst.zakres === 'wszystkie' ? ' seg-on' : ''}" data-z="wszystkie" role="tab" aria-selected="${hst.zakres === 'wszystkie'}">Wszystkie</button></div>
-      <p class="muted small">Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</p>
-      ${Object.keys(byDate).length ? Object.entries(byDate).map(([d, xs]) => `<section class="panel day${d === U().today() ? ' day-today' : ''}"><h2 class="panel-title">${esc(dayName(d))}${d === U().today() ? ' · dziś' : ''}</h2>
-        <div class="task-list">${xs.map(x => `<div class="task"><div class="task-main"><button type="button" class="task-title linkish" data-ie="${x.id}">${esc(x.number)} · ${esc(x.building_name)}</button>
-          <span class="muted small">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''} · ekipa: ${x.crew_name ? esc(x.crew_name) : '<b class="txt-warn">nieprzydzielona</b>'} · urządzenia: ${esc(x.devices_installed)}/${esc(x.devices_planned)}${x.planned_end && x.planned_end !== x.planned_date ? ' · do ' + esc(fd(x.planned_end)) : ''}${x.project_number ? ' · ' + esc(x.project_number) : ''}</span></div>
-          <div class="task-side"><button type="button" class="btn btn-ghost btn-sm" data-ie="${x.id}">Edytuj</button>${x.status === 'odebrany' ? `${chip('odebrany', 'Odebrany')} ${B().pdfLink('/api/dokumenty/' + x.protocol_document_id + '/plik', 'Protokół PDF')}`
-            : `<label class="visually-hidden" for="is-${x.id}">Status</label><select class="status-select st-${esc(x.status)}" id="is-${x.id}" data-is="${x.id}">${Object.entries(INST_ST).filter(([k]) => k !== 'odebrany').map(([k, v]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${v}</option>`).join('')}</select>
-              ${x.status === 'wykonany' ? `<button type="button" class="btn btn-primary btn-sm" data-ip="${x.id}">Protokół odbioru</button>` : ''}`}</div></div>`).join('')}</div></section>`).join('')
-      : `<section class="panel"><p class="empty-inline">Brak montaży ${hst.zakres === 'biezace' ? 'od ' + esc(fd(from)) : 'w harmonogramie'}. Dodaj montaż ręcznie, zaimportuj listę z Excela albo wczytaj umowę lub harmonogram.</p></section>`}`;
+    H = { list, crews: crews.filter(c => !c.virtual && c.is_active), od };
+    const t = todayL(), act = list.filter(x => ACTIVE.includes(x.status));
+    const today = act.filter(x => covers(x, t)), d14 = act.filter(x => x.planned_date >= t && x.planned_date <= addDays(t, 14));
+    const crewToday = [...new Set(today.map(x => x.crew_name).filter(Boolean))];
+    const tag = (txt, tone) => `<span class="hk-tag hk-${tone}">${esc(txt)}</span>`;
+    const kpi = (label, v, foot, act2) => `<${act2 ? `button type="button" class="hk hk-btn" ${act2}` : 'div class="hk"'}><span class="hk-l">${esc(label)}</span><span class="hk-v${v ? '' : ' hk-zero'}">${esc(v)}</span>${foot || ''}</${act2 ? 'button' : 'div'}>`;
+    const kpis = [
+      kpi('Montaże dziś', sum.trwajace, `<span class="hk-f">${crewToday.length ? esc(crewToday.join(' · ')) : 'brak montaży'}</span>`),
+      kpi('Najbliższe 14 dni', sum.montaze_14d, `<span class="hk-f">${esc(d14.reduce((s, x) => s + (x.devices_planned || 0), 0).toLocaleString('pl-PL'))} urządzeń</span>`),
+      kpi('Bez ekipy', sum.bez_ekipy, sum.bez_ekipy ? tag('do przydzielenia', 'warn') : tag('wszystkie przydzielone', 'ok'), sum.bez_ekipy ? 'data-filter="bez"' : ''),
+      kpi('Czekają na protokół', sum.do_odbioru, sum.do_odbioru ? tag('do odbioru', 'warn') : '', sum.do_odbioru ? 'data-filter="protokol"' : ''),
+      srv ? kpi('Serwisy do przydziału', srv.nieprzypisane, srv.po_terminie_przydzialu ? tag(srv.po_terminie_przydzialu + ' po terminie', 'danger') : srv.nieprzypisane ? tag('czekają', 'warn') : '', 'data-gotab="serwisy"') : '',
+      odc ? kpi('Odczyty po terminie', odc.po_terminie, odc.po_terminie ? tag('zaległe', 'danger') : tag('wszystko w terminie', 'ok'), 'data-gotab="odczyty"') : ''
+    ].join('');
+    // Wymaga uwagi: tylko sprawy, które czekają na reakcję.
+    const unassigned = act.filter(x => !x.crew_id && span(x)[1] >= t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
+    const oldest = list.filter(x => x.status === 'wykonany').sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
+    const attn = [];
+    const ai = (n, tone, title, sub, a) => attn.push(`<li><button type="button" class="attn-i" ${a}><span class="attn-n attn-${tone}">${esc(n)}</span><span class="attn-t">${esc(title)}<small>${esc(sub)}</small></span>${ic('right', 'ic ic-sm')}</button></li>`);
+    if (sum.bez_ekipy) ai(sum.bez_ekipy, 'warn', 'Montaże bez ekipy', unassigned ? 'najbliższy: ' + rel(unassigned.planned_date) : 'przydziel ekipę w formularzu montażu', 'data-filter="bez"');
+    if (srv && srv.po_terminie_przydzialu) ai(srv.po_terminie_przydzialu, 'danger', 'Serwisy po terminie przydziału', 'przydziel serwisanta', 'data-gotab="serwisy"');
+    else if (srv && srv.nieprzypisane) ai(srv.nieprzypisane, 'warn', 'Serwisy do przydzielenia', 'czekają na serwisanta', 'data-gotab="serwisy"');
+    if (sum.do_odbioru) ai(sum.do_odbioru, 'warn', 'Montaże do protokołu odbioru', oldest ? 'najstarszy: ' + rel(oldest.planned_date) : 'wykonane, bez protokołu', 'data-filter="protokol"');
+    if (odc && odc.po_terminie) ai(odc.po_terminie, 'danger', 'Odczyty po terminie', 'zaplanuj odczyt', 'data-gotab="odczyty"');
+    if (sum.reklamacje_otwarte) ai(sum.reklamacje_otwarte, 'warn', 'Otwarte reklamacje', 'do rozpatrzenia', 'data-gotab="reklamacje"');
+    const okLine = `<p class="attn-fine"><span class="attn-n attn-ok">${ic('ok', 'ic ic-sm')}</span>${attn.length ? 'Pozostałe sprawy w terminie' : 'Wszystko w terminie – nic nie czeka na reakcję'}</p>`;
+    // Ekipy dziś: w pracy (montaż obejmuje dzisiejszy dzień) albo wolna z najbliższym montażem.
+    const crewRows = H.crews.map(c => {
+      const job = today.find(x => x.crew_id === c.id), next = act.filter(x => x.crew_id === c.id && x.planned_date > t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
+      return `<li class="crew-r">${crewAv(c.id, c.name)}<span class="crew-t">${esc(c.name)}<small>${job ? esc(job.building_name + (job.city ? ', ' + job.city : '')) : next ? 'następny montaż: ' + esc(rel(next.planned_date)) : 'brak zaplanowanych montaży'}</small></span>${job ? chip('teal', 'w pracy') : chip('ok', 'wolna')}</li>`;
+    }).join('');
+    const xlOn = U().has('export.xlsx');
+    body.innerHTML = `<p data-ws-sub></p>
+      <div data-ws-actions hidden>
+        <div class="seg hm-views" role="group" aria-label="Widok harmonogramu">${[['lista', 'Lista'], ['tydzien', 'Tydzień'], ['miesiac', 'Miesiąc']].map(([k, v]) => `<button type="button" class="seg-b" data-v="${k}">${v}</button>`).join('')}</div>
+        <div class="dd"><button type="button" class="btn btn-secondary" data-pop aria-haspopup="true" aria-expanded="false">${ic('up')}Importuj${ic('chev', 'ic ic-sm')}</button>
+          <div class="pop dd-menu" hidden><button type="button" class="pop-i" id="i-xls"><b>Z Excela</b><span>lista montaży z szablonu .xlsx</span></button>
+            <button type="button" class="pop-i" id="i-doc"><b>Z umowy lub harmonogramu</b><span>PDF albo skan – odczyt przez AI</span></button></div></div>
+        ${xlOn ? `<a class="btn btn-secondary btn-icon" id="hm-xl" href="#" download aria-label="Eksport widocznych montaży do Excela" title="Eksport do Excela">${ic('down')}</a>` : ''}
+        <button type="button" class="btn btn-primary ws-fab" id="i-new">${ic('plus')}Dodaj montaż</button>
+      </div>
+      <section class="hm-kpis" aria-label="Podsumowanie działu">${kpis}</section>
+      <div class="hm-grid">
+        <section class="panel hm-attn" aria-labelledby="hm-attn-t"><h2 class="panel-title" id="hm-attn-t">Wymaga uwagi</h2>${attn.length ? `<ul class="attn">${attn.join('')}</ul>` : ''}${okLine}</section>
+        <section class="panel hm-main" aria-label="Montaże"><div id="hm-view"></div>
+          <p class="hm-note">Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</p></section>
+        <section class="panel hm-crews" aria-labelledby="hm-crews-t"><h2 class="panel-title" id="hm-crews-t">Ekipy dziś</h2>
+          ${crewRows ? `<ul class="crew-list">${crewRows}</ul>` : '<p class="empty-inline">Brak aktywnych ekip. <button type="button" class="linkish" data-gotab="ekipy">Dodaj ekipę</button></p>'}</section>
+      </div>`;
+    const views = [...body.querySelectorAll('[data-v]')], xlA = body.querySelector('#hm-xl'), view = body.querySelector('#hm-view'), grid = body.querySelector('.hm-grid');
+    const setSub = txt => { const el = body.querySelector('[data-ws-sub]') || (body.closest('.ws') || document).querySelector('.ws-sub'); if (el) { el.textContent = txt; el.hidden = false; } };
+    // Zmiana widoku lub filtrów: lokalnie, jeśli pobrane dane obejmują nowy zakres; inaczej pobranie od nowa.
+    const apply = ch => {
+      Object.assign(hst, ch);
+      const need = fetchFrom();
+      if (H.od === '' || (need !== '' && need >= H.od)) paint(); else reload();
+    };
+    function paint() {
+      const [a, b] = viewRange(), xs = list.filter(x => pass(x) && (!a || span(x)[1] >= a) && (!b || x.planned_date <= b));
+      const nav = what => `<div class="hm-nav"><button type="button" class="btn btn-secondary btn-icon" data-nav="-1" aria-label="${what === 'w' ? 'Poprzedni tydzień' : 'Poprzedni miesiąc'}">${ic('left')}</button>
+        <button type="button" class="btn btn-secondary" data-nav="0">Dziś</button><button type="button" class="btn btn-secondary btn-icon" data-nav="1" aria-label="${what === 'w' ? 'Następny tydzień' : 'Następny miesiąc'}">${ic('right')}</button>
+        <b class="hm-navl">${esc(what === 'w' ? weekLabel(weekStart(cursor())) : monthLabel(cursor()))}</b></div>`;
+      const sel = (id, f, label, o) => `<label class="visually-hidden" for="${id}">${label}</label><select id="${id}" class="select-sm" data-f="${f}">${o.map(([k, v]) => `<option value="${esc(k)}"${hst[f] === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+      const filters = sel('hf-c', 'ekipa', 'Ekipa', [['', 'Wszystkie ekipy'], ...H.crews.map(c => [c.id, c.name]), ['__brak', 'Bez ekipy']])
+        + sel('hf-s', 'status', 'Status', [['', 'Wszystkie statusy'], ['aktywne', 'Aktywne (bez odebranych)'], ...Object.entries(INST_ST)])
+        + (hst.widok === 'lista' ? sel('hf-z', 'zakres', 'Zakres', [['biezace', 'Od ' + fd(from14())], ['wszystkie', 'Wszystkie terminy']]) : '');
+      const n = xs.length;
+      view.innerHTML = `${hst.widok !== 'lista' ? nav(hst.widok === 'tydzien' ? 'w' : 'm') : ''}<div class="hm-bar">${filters}<span class="hm-count">${esc(nMont(n))}</span></div>
+        ${hst.widok === 'lista' ? listHtml(xs) : hst.widok === 'tydzien' ? weekHtml(xs) : monthHtml(xs)}
+        ${hst.widok !== 'lista' && !n ? `<p class="hm-empty">${hst.ekipa || hst.status ? 'Brak montaży dla wybranych filtrów.' : 'W tym okresie nie ma montaży.'}</p>` : ''}`;
+      grid.classList.toggle('hm-wide', hst.widok !== 'lista');   // tydzień i miesiąc na całą szerokość
+      views.forEach(v => { const o = v.dataset.v === hst.widok; v.classList.toggle('seg-on', o); v.setAttribute('aria-pressed', String(o)); });
+      setSub(hst.widok === 'tydzien' ? weekLabel(weekStart(cursor())) : hst.widok === 'miesiac' ? monthLabel(cursor())
+        : hst.zakres === 'biezace' ? 'Od dziś i ostatnie 14 dni · ' + nMont(n) : 'Wszystkie terminy · ' + nMont(n));
+      if (xlA) {
+        const p = {};
+        if (a && hst.widok !== 'lista') { p.od = a; p.do = b; } else if (a) p.od = a;
+        if (hst.ekipa && hst.ekipa !== '__brak') p.crew_id = hst.ekipa;
+        if (INST_ST[hst.status]) p.status = hst.status;
+        xlA.href = '/api/eksport/d1/montaze?' + new URLSearchParams(p);
+      }
+    }
+    views.forEach(v => v.addEventListener('click', () => apply({ widok: v.dataset.v })));
     body.querySelector('#i-new').addEventListener('click', () => installationForm(null, reload));
     body.querySelector('#i-xls').addEventListener('click', () => window.MXT_IMPORT.excel(reload));
     body.querySelector('#i-doc').addEventListener('click', () => window.MXT_IMPORT.document(reload));
-    body.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => { hst.zakres = b.dataset.z; reload(); }));
-    body.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; reload(); }));
-    body.querySelectorAll('[data-ie]').forEach(b => b.addEventListener('click', async () => installationForm(await api('d1/montaze/' + b.dataset.ie), reload)));
-    body.querySelectorAll('[data-is]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/montaze/' + s.dataset.is, { status: s.value }, 'PATCH'); toast('Status montażu zmieniony.'); reload(); } catch (e) { toast(e.message); reload(); } }));
-    body.querySelectorAll('[data-ip]').forEach(b => b.addEventListener('click', () => protocolForm(list.find(x => x.id === b.dataset.ip), reload)));
+    body.addEventListener('click', async e => {
+      const el = e.target.closest('[data-ie],[data-ip],[data-nav],[data-day],[data-filter],[data-gotab]'); if (!el) return;
+      const ds = el.dataset;
+      if (ds.ie) return installationForm(await api('d1/montaze/' + ds.ie), reload);
+      if (ds.ip) return protocolForm(list.find(x => x.id === ds.ip), reload);
+      if (ds.gotab) { tab = ds.gotab; return reload(); }
+      if (ds.day) return apply({ widok: 'tydzien', kursor: ds.day });
+      if (ds.filter === 'bez') return apply({ widok: 'lista', zakres: 'biezace', ekipa: '__brak', status: 'aktywne' });
+      if (ds.filter === 'protokol') return apply({ widok: 'lista', zakres: 'wszystkie', ekipa: '', status: 'wykonany' });
+      if (ds.nav != null) {
+        const n = Number(ds.nav);
+        if (!n) return apply({ kursor: '' });
+        if (hst.widok === 'tydzien') return apply({ kursor: addDays(cursor(), 7 * n) });
+        const d = D(monthStart(cursor())); d.setMonth(d.getMonth() + n); return apply({ kursor: iso(d) });
+      }
+    });
+    body.addEventListener('change', async e => {
+      const s = e.target;
+      if (s.dataset.f) return apply({ [s.dataset.f]: s.value });
+      if (s.dataset.is) { try { await api('d1/montaze/' + s.dataset.is, { status: s.value }, 'PATCH'); toast('Status montażu zmieniony.'); reload(); } catch (x) { toast(x.message); reload(); } }
+    });
+    paint();
   }
 
   // ---------- ekipy ----------

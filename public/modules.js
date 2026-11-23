@@ -65,6 +65,10 @@
   let renderSeq = 0;
   async function render(path, root) {
     const def = ROUTES[path], seq = ++renderSeq;
+    // Strony działów mają własny układ (menu boczne) – klasa na ekranie i na body (pasek użytkownika w górnym pasku).
+    const ws = path.startsWith('/dzial/') && allowed(me(), def);
+    document.body.classList.toggle('ws-mode', ws);
+    const scr = root.closest('.screen'); if (scr) scr.classList.toggle('screen-ws', ws);
     root.classList.remove('mod-in'); void root.offsetWidth; root.classList.add('mod-in');
     if (!allowed(me(), def)) {
       root.innerHTML = `<div class="forbidden"><h1 class="mod-title">Brak dostępu</h1><p>Twoje konto nie ma uprawnień do modułu „${esc(def.title)}”.${def.admin ? ' Moduł jest dostępny tylko dla administratorów.' : ''}</p>
@@ -758,17 +762,108 @@
     if (tab && !TABS.includes(path)) { const i = after ? TABS.indexOf(after) : -1; i >= 0 ? TABS.splice(i + 1, 0, path) : TABS.push(path); }
     if (inMenu && !MENU_EXTRA.includes(path)) MENU_EXTRA.push(path);
   }
-  // Ramka strony działu: logo (z ekranu), etykieta „Dział”, nazwa, „Powrót do wyboru działu”, zakładki działu.
-  function deptFrame(root, title, tabs, active, onTab, lead) {
-    root.innerHTML = `<div class="dept-head"><p class="eyebrow">Dział</p><h1 class="mod-title">${esc(title)}</h1>${lead ? `<p class="mod-lead">${esc(lead)}</p>` : ''}
-      <button type="button" class="btn btn-secondary btn-sm" data-back>Powrót do wyboru działu</button></div>
-      ${tabs.length > 1 ? `<nav class="modnav dept-tabs" aria-label="Funkcje działu">${tabs.map(([k, v]) => `<button type="button" class="tab${k === active ? ' tab-on' : ''}" data-dtab="${k}"${k === active ? ' aria-current="page"' : ''}>${esc(v)}</button>`).join('')}</nav>` : ''}
-      <div class="mod-body" id="mod-body"><p class="muted loading">Wczytywanie…</p></div>`;
-    root.querySelector('[data-back]').addEventListener('click', () => go('/dzialy'));
-    root.querySelectorAll('[data-dtab]').forEach(b => b.addEventListener('click', () => onTab(b.dataset.dtab)));
+  // ---------- ramka strony działu: menu boczne, ścieżka, nagłówek zakładki; na telefonie nagłówek działu i menu dolne ----------
+  // Zakładka: [klucz, nazwa, grupa w menu bocznym (opcjonalnie), krótka nazwa do menu dolnego (opcjonalnie)].
+  const IC = {
+    harmonogram: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
+    serwisy: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
+    odczyty: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M12 5v1"/>',
+    rozliczenia: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+    oferty: '<path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    rentownosc: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    ekipy: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6 6 0 0 1 3.5 5.5"/>',
+    budynki: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M10 21v-3h4v3"/>',
+    urzadzenia: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M10 7h4M9 12h6v4H9z"/>',
+    reklamacje: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    kalkulacje: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+    eksport: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+    historia: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    kursy: '<path d="M4 19V5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM8 7h8"/>',
+    admin: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+    postep: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
+    rozmowy: '<path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.5 19.5 0 0 1-8.5-3 19 19 0 0 1-5.8-5.8 19.5 19.5 0 0 1-3-8.6A2 2 0 0 1 3.5 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.7a2 2 0 0 1-.5 2.1L7.5 9.8a15.5 15.5 0 0 0 5.8 5.8l1.3-1.3a2 2 0 0 1 2.1-.4c.8.3 1.8.6 2.7.7a2 2 0 0 1 1.6 1.9z"/>',
+    zgloszenia: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
+    integracja: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+    wiecej: '<path d="M4 6h16M4 12h16M4 18h16"/>', dot: '<circle cx="12" cy="12" r="3"/>',
+    chev: '<path d="M6 9l6 6 6-6"/>', left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+    up: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>', down: '<path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', ok: '<path d="M5 12l5 5L20 7"/>', all: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
+  };
+  const icon = (k, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC.dot}</svg>`;
+  function deptFrame(root, title, tabs, active, onTab) {
+    const slug = (location.pathname.match(/^\/dzial\/([a-z-]+)/) || [])[1] || '';
+    const deps = window.MXT.departments ? window.MXT.departments() : [];
+    const dep = deps.find(d => d.slug === slug) || { slug, name: title };
+    const cur = tabs.find(t => t[0] === active) || tabs[0] || [active, title];
+    const groups = [];
+    for (const t of tabs) { const g = t[2] || ''; let G = groups.find(x => x.name === g); if (!G) groups.push(G = { name: g, items: [] }); G.items.push(t); }
+    const on = t => t[0] === cur[0];
+    const item = (t, cls, short) => `<button type="button" class="${cls}${on(t) ? ' on' : ''}" data-dtab="${esc(t[0])}"${on(t) ? ' aria-current="page"' : ''}>${icon(t[0])}<span class="ws-l">${esc(short ? t[3] || t[1] : t[1])}</span><span class="ws-badge" data-badge="${esc(t[0])}" hidden></span></button>`;
+    const navList = cls => groups.map(g => `<div class="ws-group">${g.name ? `<p class="ws-gname">${esc(g.name)}</p>` : ''}${g.items.map(t => item(t, cls)).join('')}</div>`).join('');
+    const logo = dep.logo ? `<img class="ws-logo" src="${esc(dep.logo.src)}" width="${dep.logo.w}" height="${dep.logo.h}" alt="${esc(dep.logo.alt)}">` : '';
+    const switcher = `<div class="ws-switch"><button type="button" class="ws-switch-b" data-pop aria-haspopup="true" aria-expanded="false">
+        <span class="ws-switch-t"><span class="ws-k">Dział</span><span class="ws-n">${esc(dep.name)}</span></span>${icon('chev', 'ic ic-sm')}</button>
+      <div class="pop ws-switch-menu" hidden>${deps.map(d => `<button type="button" class="pop-i${d.slug === slug ? ' on' : ''}" data-go="/dzial/${esc(d.slug)}"${d.slug === slug ? ' aria-current="true"' : ''}>${esc(d.name)}</button>`).join('')}
+        <button type="button" class="pop-i pop-all" data-go="/dzialy">${icon('all', 'ic ic-sm')}Wszystkie działy</button></div></div>`;
+    // Menu dolne (telefon): do 5 pozycji; przy większej liczbie 4 pierwsze + „Więcej” z pełną listą.
+    const many = tabs.length > 5, first = many ? tabs.slice(0, 4) : tabs, moreOn = many && !first.some(on);
+    root.innerHTML = `<div class="ws" data-dept="${esc(slug)}">
+      <aside class="ws-side" aria-label="Menu działu">${logo}${switcher}<nav class="ws-nav" aria-label="Funkcje działu">${navList('ws-i')}</nav></aside>
+      <div class="ws-main">
+        <div class="ws-top"><nav class="ws-crumbs" aria-label="Ścieżka"><button type="button" data-go="/dzialy">Działy</button><span aria-hidden="true">/</span>
+          ${tabs.length > 1 ? `<button type="button" data-dtab-home>${esc(dep.name)}</button><span aria-hidden="true">/</span><b>${esc(cur[1])}</b>` : `<b>${esc(dep.name)}</b>`}</nav></div>
+        <div class="ws-mhead">${logo}${switcher}</div>
+        <div class="ws-content">
+          <header class="ws-head"><div class="ws-head-t"><h1 class="ws-title">${esc(tabs.length > 1 ? cur[1] : dep.name)}</h1><p class="ws-sub" hidden></p></div><div class="ws-actions"></div></header>
+          <div class="mod-body" id="mod-body"><p class="muted loading">Wczytywanie…</p></div>
+        </div>
+      </div>
+      ${tabs.length > 1 ? `<nav class="ws-bnav" aria-label="Funkcje działu">${first.map(t => item(t, 'ws-b', true)).join('')}
+        ${many ? `<button type="button" class="ws-b${moreOn ? ' on' : ''}" data-pop aria-haspopup="true" aria-expanded="false">${icon('wiecej')}<span class="ws-l">Więcej</span><span class="ws-badge" data-badge="__more" hidden></span></button>
+        <div class="pop ws-more" role="dialog" aria-label="Wszystkie funkcje działu" hidden><nav class="ws-nav">${navList('ws-i')}</nav></div>` : ''}</nav>` : ''}
+    </div>`;
+    root.querySelectorAll('[data-dtab]').forEach(b => b.addEventListener('click', () => { if (b.dataset.dtab !== cur[0]) onTab(b.dataset.dtab); }));
+    const home = root.querySelector('[data-dtab-home]'); if (home) home.addEventListener('click', () => onTab(tabs[0][0]));
+    root.querySelectorAll('.ws [data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
     return root.querySelector('#mod-body');
   }
-  window.MXT_UI = { esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, render, pre, avatar, usd, taskForm, today };
+  // Licznik przy pozycji menu działu (np. serwisy do przydzielenia); tone: warn | danger.
+  function wsBadge(root, key, n, tone = 'warn') {
+    const set = (k, v, t) => root.querySelectorAll(`[data-badge="${k}"]`).forEach(b => { b.hidden = !v; b.textContent = v > 99 ? '99+' : String(v || ''); b.className = 'ws-badge ws-badge-' + t; });
+    set(key, n, tone);
+    // „Więcej” w menu dolnym sumuje liczniki ukrytych tam pozycji.
+    const more = root.querySelector('[data-badge="__more"]');
+    if (more) { let sum = 0, t = 'warn'; root.querySelectorAll('.ws-more [data-badge]').forEach(b => { const inBar = root.querySelector(`.ws-bnav > [data-dtab="${b.dataset.badge}"]`); if (!b.hidden && !inBar) { sum += parseInt(b.textContent, 10) || 0; if (b.classList.contains('ws-badge-danger')) t = 'danger'; } }); set('__more', sum, t); }
+  }
+  // Treść zakładki może podać podtytuł i przyciski nagłówka: <p data-ws-sub> i <div data-ws-actions> (przenoszone do nagłówka).
+  function wsHoist(root) {
+    const a = root.querySelector('.ws-actions'), s = root.querySelector('.ws-sub');
+    const src = root.querySelector('.mod-body [data-ws-actions]'), ss = root.querySelector('.mod-body [data-ws-sub]');
+    if (a) a.replaceChildren(...(src ? [...src.childNodes] : []));
+    if (src) src.remove();
+    if (s) { s.textContent = ss ? ss.textContent : ''; s.hidden = !ss; }
+    if (ss) ss.remove();
+  }
+  // Rozwijane menu: przycisk [data-pop] otwiera następny element .pop; klik poza nim, wybór pozycji lub Escape zamyka.
+  function closePops(except) {
+    document.querySelectorAll('.pop:not([hidden])').forEach(p => {
+      if (p === except) return;
+      p.hidden = true;
+      const b = p.previousElementSibling; if (b && b.hasAttribute('data-pop')) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  document.addEventListener('click', e => {
+    const t = e.target.closest ? e.target : null; if (!t) return;
+    const b = t.closest('[data-pop]');
+    if (b && b.nextElementSibling && b.nextElementSibling.classList.contains('pop')) {
+      const p = b.nextElementSibling, open = p.hidden;
+      closePops(p); p.hidden = !open; b.setAttribute('aria-expanded', String(open));
+      return;
+    }
+    if (!t.closest('.pop') || t.closest('.pop button, .pop a')) closePops();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
+  window.MXT_UI = { esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today };
 
   window.MXT_MODULES = { routes: ROUTES, render, menu, register };
 })();

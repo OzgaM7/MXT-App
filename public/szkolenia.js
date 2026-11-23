@@ -11,9 +11,9 @@
 
   async function page(root, path, alive) {
     const admin = U().has('training.admin');
-    const tabs = [['kursy', 'Moje kursy'], ...(admin ? [['admin', 'Panel administratora'], ['postep', 'Postęp pracowników']] : [])];
+    const tabs = [['kursy', 'Moje kursy'], ...(admin ? [['admin', 'Panel administratora', '', 'Administracja'], ['postep', 'Postęp pracowników', '', 'Postęp']] : [])];
     const active = ['kurs', 'lekcja', 'test'].includes(view.mode) ? 'kursy' : view.mode === 'edytor' ? 'admin' : view.mode;
-    const body = U().deptFrame(root, 'Ubezpieczenia', tabs, active, t => { view = { mode: t }; reload(); }, 'Platforma szkoleniowa: kursy, lekcje, testy wiedzy i zaświadczenia.');
+    const body = U().deptFrame(root, 'Ubezpieczenia', tabs, active, t => { view = { mode: t }; reload(); });
     const reload = () => U().render(path, root);
     await ({ kursy, kurs, lekcja, test, admin: adminPanel, edytor, postep }[view.mode])(body, reload, alive);
   }
