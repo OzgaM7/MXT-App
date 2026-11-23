@@ -203,7 +203,9 @@
     ['Approval Center', 'dostępny', '/akceptacje', 'approvals.decide'], ['Security & Audit', 'dostępny', '/bezpieczenstwo', 'security.audit'],
     ['AI Board', 'dostępny', '/ai-board'], ['AI Workforce', 'dostępny', '/ai-workforce'], ['Ustawienia AI', 'dostępny', '/ustawienia-ai', 'ai.settings'],
     ['Finance Intelligence', 'dostępny', '/finanse'], ['CRM', 'dostępny', '/crm'], ['Knowledge Base', 'dostępny', '/wiedza'],
-    ['Podzielniki i Montaże', 'dostępny', '/dzial/podzielniki-i-montaze'], ['Sprzedaż części i eksport', 'dostępny', '/dzial/sprzedaz-czesci-i-eksport'], ['Platforma Szkoleniowa', 'dostępny', '/dzial/ubezpieczenia'],
+    ['Ciepłomierze i podzielniki', 'dostępny', '/dzial/podzielniki-i-montaze'], ['Sprzedaż części samochodowych', 'dostępny', '/dzial/sprzedaz-czesci-i-eksport'],
+    ['Ubezpieczenia – rejestr polis', 'dostępny', '/dzial/ubezpieczenia', 'insurance.manage'], ['Magazyn', 'dostępny', '/magazyn', 'stock.view'], ['Pracownicy', 'dostępny', '/pracownicy', 'employees.manage'],
+    ['Platforma Szkoleniowa', 'dostępny', '/szkolenia'],
     ['Communication Hub', 'dostępny', '/komunikacja'], ['Business Intelligence', 'dostępny', '/bi'], ['Karta wyników agentów', 'dostępny', '/karta-wynikow'],
     ['Automatyzacje i dzienny raport', 'dostępny', '/automatyzacje', 'automations.manage']
   ];
@@ -791,6 +793,8 @@
     dostawcy: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>', magazyny: '<path d="M3 21V9l9-6 9 6v12"/><path d="M8 21v-6h8v6"/>',
     kartoteka: '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M14 10h4M14 14h4"/>',
     nieobecnosci: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M9 14l6 4M15 14l-6 4"/>', czas: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    polisy: '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/>', odnowienia: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
+    przypomnienia: '<path d="M6 9a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 21h4"/>', klienci: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6 6 0 0 1 3.5 5.5"/>',
     wiecej: '<path d="M4 6h16M4 12h16M4 18h16"/>', dot: '<circle cx="12" cy="12" r="3"/>',
     chev: '<path d="M6 9l6 6 6-6"/>', left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     up: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>', down: '<path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',

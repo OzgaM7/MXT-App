@@ -1,10 +1,10 @@
 'use strict';
-// Dział 3 – Ubezpieczenia: wyłącznie Platforma Szkoleniowa (kursy, lekcje, testy, postęp, zaświadczenia, panel administratora).
+// Szkolenia (moduł wspólny, wcześniej w dziale Ubezpieczenia – dział jest teraz rejestrem polis): Platforma Szkoleniowa (kursy, lekcje, testy, postęp, zaświadczenia, panel administratora).
 (() => {
   const U = () => window.MXT_UI, B = () => window.MXT_BIZ;
   const esc = v => U().esc(v), api = (...a) => U().api(...a), toast = m => U().toast(m), chip = (a, b) => U().chip(a, b);
   const fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
-  const PATH = '/dzial/ubezpieczenia';
+  const PATH = '/szkolenia';
   const KIND = { tekst: 'Tekst', pdf: 'PDF', wideo: 'Wideo' };
   let view = { mode: 'kursy' };   // kursy | kurs | lekcja | test | admin | edytor | postep
   const bar = p => `<div class="bar bar-lg" aria-hidden="true"><i data-w="${Number(p) || 0}"></i></div>`;
@@ -13,7 +13,7 @@
     const admin = U().has('training.admin');
     const tabs = [['kursy', 'Moje kursy'], ...(admin ? [['admin', 'Panel administratora', '', 'Administracja'], ['postep', 'Postęp pracowników', '', 'Postęp']] : [])];
     const active = ['kurs', 'lekcja', 'test'].includes(view.mode) ? 'kursy' : view.mode === 'edytor' ? 'admin' : view.mode;
-    const body = U().deptFrame(root, 'Ubezpieczenia', tabs, active, t => { view = { mode: t }; reload(); });
+    const body = U().deptFrame(root, 'Szkolenia', tabs, active, t => { view = { mode: t }; reload(); });
     const reload = () => U().render(path, root);
     await ({ kursy, kurs, lekcja, test, admin: adminPanel, edytor, postep }[view.mode])(body, reload, alive);
   }
@@ -182,5 +182,5 @@
       </tbody></table></div>` : '<p class="empty-inline">Brak kursów.</p>'}<p class="muted small">Postęp szkoleń śledzi także COO (Zarząd AI) przez narzędzie „postęp szkoleń”.</p></section>`;
   }
 
-  window.MXT_MODULES.register(PATH, { title: 'Ubezpieczenia – Platforma Szkoleniowa', perm: 'departments.view', render: page });
+  window.MXT_MODULES.register(PATH, { title: 'Szkolenia', perm: 'departments.view', render: page, ws: true }, { menu: true });
 })();

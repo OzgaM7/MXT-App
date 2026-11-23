@@ -373,6 +373,12 @@ r.post('/wiedza/:id/wersja', idParam, use, wrap(async (req, res) => res.status(2
 r.get('/dokumenty/:id/plik', idParam, use, wrap(async (req, res) => {
   const v = await docs.getVersion(req.params.id, parseInt(req.query.v, 10) || null);
   if (!v || !v.file_data) throw bad(404, 'Ten dokument nie ma pliku PDF.');
+  // Skan dokumentu (np. polisy) jako obraz – z właściwym typem i bez wykonywania treści.
+  if (['image/jpeg', 'image/png'].includes(v.mime_type)) {
+    res.set({ 'Content-Type': v.mime_type, 'Content-Length': v.file_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+      'Content-Disposition': `${req.query.pobierz === '1' ? 'attachment' : 'inline'}; filename="${String(v.file_name || 'skan').replace(/[^\w.-]+/g, '_')}"`, 'Content-Security-Policy': "default-src 'none'" });
+    return res.end(v.file_data);
+  }
   sendPdf(res, v.file_data, v.file_name || 'dokument.pdf', req.query.pobierz !== '1');
 }));
 

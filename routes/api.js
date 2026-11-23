@@ -209,6 +209,11 @@ r.get('/command-center', requirePerm('command.view'), wrap(async (req, res) => {
   if (k.po_terminie) alerts.push({ level: 'ostrzezenie', text: `Zadania po terminie: ${k.po_terminie}.`, link: '/zadania' });
   if (k.pilne) alerts.push({ level: 'info', text: `Otwarte zadania pilne: ${k.pilne}.`, link: '/zadania' });
   if (admin && pend.rows[0].stare) alerts.push({ level: 'ostrzezenie', text: `Decyzje czekające ponad 24 godziny: ${pend.rows[0].stare}.`, link: '/akceptacje' });
+  // Ubezpieczenia: polisy kończące się w ciągu 30 dni (bez odnowienia) – w głównym panelu dla osób obsługujących polisy.
+  if (can(req.user, 'insurance.manage')) {
+    const pol = (await pool.query(`SELECT count(*)::int n, count(*) FILTER (WHERE days_left <= 7)::int pilne FROM policies_v WHERE status = 'konczy_sie'`)).rows[0];
+    if (pol.n) alerts.push({ level: pol.pilne ? 'ostrzezenie' : 'info', text: `Polisy kończące się w ciągu 30 dni: ${pol.n}${pol.pilne ? ` (w tym ${pol.pilne} w ciągu 7 dni)` : ''}.`, link: '/dzial/ubezpieczenia?tab=odnowienia' });
+  }
   const d3 = (await pool.query(`SELECT
       (SELECT count(*)::int FROM finance WHERE kind = 'przychod' AND invoice_no <> '' AND paid_at IS NULL AND due_date < current_date) AS faktury_po_terminie,
       (SELECT count(*)::int FROM complaints WHERE status NOT IN ('rozwiazana','odrzucona')) AS reklamacje,
@@ -286,6 +291,7 @@ r.use('/d1', require('./erp/obiekty'));   // przed ./dzial1: PATCH /d1/urzadzeni
 r.use('/d1', require('./erp/zlecenia'));
 r.use('/magazyn', require('./erp/magazyn'));
 r.use('/', require('./erp/pracownicy'));
+r.use('/', require('./erp/polisy'));
 
 // ---------- etap 3: działy, CRM, finanse, Knowledge Base, platforma szkoleniowa ----------
 r.use('/d1', require('./dzial1'));

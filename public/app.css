@@ -1156,3 +1156,11 @@ div.kpi { cursor: default; }
   .dr-row { grid-template-columns: minmax(0, 1fr) 110px; }
   .dr-row input[name^="n:"] { grid-column: 1 / -1; }
 }
+
+/* ---------- ubezpieczenia: formularz polisy ---------- */
+.pf-money { align-items: end; }
+.pf-profit { display: flex; align-items: center; min-height: 48px; padding: 0 14px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+.pf-profit.pf-bad { background: var(--danger-soft); color: var(--danger); }
+.pf-res { display: flex; flex-direction: column; gap: 2px; margin: -4px 0 8px; }
+.pf-res .pop-i { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); }
+.pf-cust { margin-bottom: 6px; }
