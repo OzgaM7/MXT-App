@@ -12,7 +12,7 @@ Telefon ── Twilio ──▶ server.py (/voice, /ws) ──▶ bot.py (Pipeca
 
 | Plik | Co zawiera |
 |---|---|
-| `config.py` | Działy, godziny pracy, długości wizyt, listy pytań, przełączniki (taxi, nagrywanie, SMS) – **zmiany bez programowania** |
+| `config.py` | Działy, godziny pracy, długości wizyt, listy pytań, przełączniki (nagrywanie, SMS) – **zmiany bez programowania** |
 | `prompt.py` | Powitanie (ujawnienie AI) i zasady asystentki – **zmiany bez programowania** |
 | `narzedzia.py` | Narzędzia Claude i ich zabezpieczenia |
 | `kalendarz.py` | Wolne terminy, święta, kalendarz lokalny i Google |
@@ -28,7 +28,7 @@ Telefon ── Twilio ──▶ server.py (/voice, /ws) ──▶ bot.py (Pipeca
 |---|---|---|
 | `sprawdz_wolne_terminy` | Klient chce wizytę (60 min) lub rozmowę z agentem (30 min) | Tylko godziny pracy (pon–pt 8–16), bez świąt, min. 2 h wyprzedzenia, horyzont 14 dni, osobny kalendarz każdego działu |
 | `zarezerwuj_wizyte` | Klient potwierdził termin i dane | Termin tylko z propozycji tej rozmowy; zajęty termin odrzucony (także gdy dwie rozmowy trwają naraz); adres wymagany dla podzielników; jedna rezerwacja na dział w rozmowie |
-| `zapisz_zgloszenie` | Części (pojazd, VIN, część), oddzwonienie, sprawy nietypowe, taxi | Flaga „pilne” dla awarii; dział taxi tylko gdy włączony; numer dzwoniącego jako domyślny kontakt |
+| `zapisz_zgloszenie` | Części (pojazd, VIN, część), oddzwonienie, sprawy nietypowe | Flaga „pilne” dla awarii; numer dzwoniącego jako domyślny kontakt |
 | `przekaz_do_konsultanta` | Prośba o człowieka, reklamacja, zdenerwowany klient | Tylko w godzinach pracy i z ustawionym `TRANSFER_NUMBER`; poza nimi propozycja oddzwonienia; po przekazaniu bot nie rozłącza rozmowy |
 | `zakoncz_rozmowe` | Klient się żegna | Najpierw wybrzmiewa pożegnanie, potem Twilio kończy połączenie |
 

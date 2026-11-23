@@ -7,8 +7,11 @@
   const fdt = v => U().fdt(v), fd = v => U().fd(v), money = (a, c) => U().money(a, c), has = p => U().has(p);
   const field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
   const pln = n => money(n, 'PLN');
-  const KIND = { wspolnota: 'Wspólnota mieszkaniowa', spoldzielnia: 'Spółdzielnia', zarzadca: 'Zarządca nieruchomości', firma: 'Firma', klient_zagraniczny: 'Klient zagraniczny', inny: 'Inny' };
-  const DEP = { 'podzielniki-i-montaze': 'Podzielniki i Montaże', 'sprzedaz-czesci-i-eksport': 'Sprzedaż części i eksport', ubezpieczenia: 'Ubezpieczenia' };
+  const KIND = { osoba_prywatna: 'Osoba prywatna', firma: 'Firma', wspolnota: 'Wspólnota mieszkaniowa', spoldzielnia: 'Spółdzielnia', zarzadca: 'Zarządca nieruchomości', klient_zagraniczny: 'Klient zagraniczny', inny: 'Inny' };
+  const DEP = { 'podzielniki-i-montaze': 'Ciepłomierze i podzielniki', 'sprzedaz-czesci-i-eksport': 'Sprzedaż części samochodowych', ubezpieczenia: 'Ubezpieczenia' };
+  const SRV_ST = { nowe: 'Nowe', oczekuje: 'Do przydzielenia', przypisane: 'Przydzielone', zaplanowane: 'Zaplanowane', w_realizacji: 'W realizacji', ponowna_wizyta: 'Ponowna wizyta',
+    wykonane: 'Wykonane', zatwierdzone: 'Zatwierdzone', rozliczone: 'Rozliczone', zamkniete: 'Zamknięte', anulowane: 'Anulowane' };
+  const INST_LBL = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany', anulowany: 'Anulowany' };
   const OFFER_ST = { szkic: 'Szkic', do_akceptacji: 'Czeka na akceptację', wyslana: 'Wysłana', przyjeta: 'Przyjęta przez klienta', odrzucona: 'Odrzucona przez klienta', anulowana: 'Anulowana' };
   const CPL_ST = { zgloszona: 'Zgłoszona', w_analizie: 'W analizie', w_naprawie: 'W naprawie', rozwiazana: 'Rozwiązana', odrzucona: 'Odrzucona' };
   const CHAN = { email: 'E-mail', telefon: 'Telefon', spotkanie: 'Spotkanie', notatka: 'Notatka', system: 'System' };
@@ -54,9 +57,21 @@
       ${sec('Oferty', table(['Numer', 'Temat', 'Status', { t: 'Kwota', num: 1 }], c.offers.map(o => `<tr><td>${esc(o.number)} <span class="muted small">v${esc(o.version)}</span></td><td>${esc(o.title)}</td><td>${chip(o.status, OFFER_ST[o.status])}</td><td class="num">${esc(money(o.total, o.currency))}</td></tr>`), 'Brak ofert.'))}
       ${c.sales.length ? sec('Sprzedaż', table(['Numer', 'Data', { t: 'Kwota', num: 1 }, 'Status'], c.sales.map(x => `<tr><td>${esc(x.number)}</td><td>${esc(fd(x.sale_date))}</td><td class="num">${esc(money(x.total, x.currency))}</td><td>${esc(x.status)}</td></tr>`), '')) : ''}
       ${c.complaints.length ? sec('Reklamacje', table(['Numer', 'Tytuł', 'Status', 'Zgłoszono'], c.complaints.map(x => `<tr><td>${esc(x.number)}</td><td>${esc(x.title)}</td><td>${chip(x.status, CPL_ST[x.status])}</td><td>${esc(fd(x.reported_at))}</td></tr>`), '')) : ''}
+      ${(c.service_orders || []).length ? sec('Zlecenia serwisowe', table(['Numer', 'Przyjęte', 'Status', 'Opis'], c.service_orders.map(o => `<tr><td><button type="button" class="linkish" data-goto="/dzial/podzielniki-i-montaze?tab=serwisy&z=${esc(o.id)}">${esc(o.number)}</button></td>
+        <td>${esc(fd(o.received_at))}</td><td>${chip(o.status, SRV_ST[o.status] || o.status)}</td><td class="small">${esc(String(o.description || '').slice(0, 140))}</td></tr>`), '')) : ''}
+      ${(c.installations || []).length ? sec('Montaże', table(['Numer', 'Budynek', 'Termin', 'Status'], c.installations.map(x => `<tr><td><button type="button" class="linkish" data-goto="/dzial/podzielniki-i-montaze?tab=harmonogram&m=${esc(x.id)}">${esc(x.number)}</button></td>
+        <td>${esc(x.building_name)}</td><td>${esc(fd(x.planned_date))}${x.planned_end && x.planned_end !== x.planned_date ? ' – ' + esc(fd(x.planned_end)) : ''}</td><td>${chip(x.status, INST_LBL[x.status] || x.status)}</td></tr>`), '')) : ''}
+      ${(c.reading_schedules || []).length ? sec('Odczyty', table(['Budynek', 'Zakres', 'Ostatni', 'Kolejny'], c.reading_schedules.map(s => `<tr><td><button type="button" class="linkish" data-goto="/odczyty?z=${esc(s.id)}">${esc(s.building_name)}</button>${s.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</td>
+        <td>${esc(s.scope)}</td><td>${esc(fd(s.last_done))}</td><td>${esc(fd(s.next_due))}</td></tr>`), '')) : ''}
+      ${(c.documents || []).length ? sec('Dokumenty', `<ul class="tool-list">${c.documents.map(d => `<li>${pdfLink('/api/dokumenty/' + d.id + '/plik', d.title)} <span class="muted small">${esc(fdt(d.created_at))}</span></li>`).join('')}</ul>`) : ''}
+      ${(c.policies || []).length ? sec('Polisy', table(['Numer', 'Towarzystwo', 'Rodzaj', 'Ochrona do', { t: 'Kwota polisy', num: 1 }, { t: 'Zysk', num: 1 }, 'Status'], c.policies.map(p => `<tr><td><button type="button" class="linkish" data-goto="/dzial/ubezpieczenia?tab=polisy&p=${esc(p.id)}">${esc(p.number)}</button></td>
+        <td>${esc(p.insurer)}</td><td>${esc(p.insurance_type)}</td><td>${esc(fd(p.end_date))}</td><td class="num">${esc(pln(p.total_amount))}</td><td class="num">${esc(pln(p.profit))}</td><td>${chip(p.status, p.status_label || p.status)}</td></tr>`), '')) : ''}
+      ${(c.part_orders || []).length ? sec('Zamówienia części', table(['Numer', 'Data', 'Status', { t: 'Wartość', num: 1 }], c.part_orders.map(o => `<tr><td><button type="button" class="linkish" data-goto="/dzial/sprzedaz-czesci-i-eksport?tab=zamowienia&o=${esc(o.id)}">${esc(o.number)}</button></td>
+        <td>${esc(fd(o.order_date))}</td><td>${chip(o.status, o.status_label || o.status)}</td><td class="num">${esc(pln(o.total_net))}</td></tr>`), '')) : ''}
       ${sec('Historia kontaktów', `<button type="button" class="btn btn-secondary btn-sm" id="cc-note">Dodaj wpis</button>` + (c.communications.length ? `<ol class="comm">${c.communications.map(m => `<li><b>${esc(CHAN[m.channel])}${m.direction !== 'wewnetrzna' ? ' · ' + (m.direction === 'wychodzaca' ? 'wychodząca' : 'przychodząca') : ''}</b> · ${esc(fdt(m.created_at))}${m.created_by_login ? ' · ' + esc(m.created_by_login) : ''}<div><b>${esc(m.subject)}</b></div>${m.body ? `<div class="muted small pre-wrap">${esc(m.body)}</div>` : ''}</li>`).join('')}</ol>` : '<p class="empty-inline">Brak wpisów.</p>'))}
       <div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="cc-edit">Edytuj dane klienta</button></div>`, { wide: true });
     box.querySelector('#cc-edit').addEventListener('click', () => customerForm(c, after));
+    box.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => { document.getElementById('modal').hidden = true; U().go(b.dataset.goto); }));
     box.querySelector('#cc-note').addEventListener('click', () => modal('Nowy wpis – ' + c.name, `
       <div class="field-row">${field('n-ch', 'Kanał', `<select id="n-ch" name="channel">${['telefon', 'email', 'spotkanie', 'notatka'].map(k => `<option value="${k}">${CHAN[k]}</option>`).join('')}</select>`)}
         ${field('n-dir', 'Kierunek', '<select id="n-dir" name="direction"><option value="wychodzaca">Wychodząca</option><option value="przychodzaca">Przychodząca</option><option value="wewnetrzna">Notatka wewnętrzna</option></select>')}</div>
@@ -68,6 +83,9 @@
     const body = U().frame(root, path, 'CRM', 'Klienci, osoby kontaktowe i historia współpracy we wszystkich działach.', '<button type="button" class="btn btn-primary" id="crm-new">Nowy klient</button>');
     const reload = () => U().render(path, root);
     root.querySelector('#crm-new').addEventListener('click', () => customerForm(null, reload));
+    // Link z wyszukiwania lub innej karty: /crm?klient=<id> otwiera kartę klienta.
+    const open = new URLSearchParams(location.search).get('klient');
+    if (open) { history.replaceState({}, '', location.pathname); customerCard(open, reload); }
     const q = new URLSearchParams(Object.entries(crmFilter).filter(([, v]) => v));
     const list = await api('klienci?' + q);
     if (!alive()) return;

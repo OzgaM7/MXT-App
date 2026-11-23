@@ -7,10 +7,14 @@
 
   // ---------- Konta i role ----------
   const ROLE_HELP = {
-    administrator: 'pełny dostęp, konta, akceptacje',
-    uzytkownik: 'praca w działach, CRM, finanse',
-    kierownik: 'jak biuro; od etapu 2 – projekty, harmonogramy, zatwierdzanie rozliczeń',
-    rozliczajacy: 'jak biuro; od etapu 2 – rozliczenia prac i materiałów',
+    administrator: 'pełny dostęp, konta, akceptacje, ustawienia systemu',
+    wlasciciel: 'wgląd w całą firmę: dashboard właściciela, finanse, analityka, wszystkie działy (bez administrowania kontami)',
+    uzytkownik: 'praca w działach, CRM, zlecenia, polisy',
+    kierownik: 'jak biuro + zarządzanie zespołem: pracownicy, czas pracy, zatwierdzanie serwisów, magazyn',
+    rozliczajacy: 'jak biuro + rozliczenia prac i materiałów, finanse',
+    ksiegowosc: 'finanse firmy, należności i zobowiązania, raporty i eksport (bez zarządzania zleceniami)',
+    magazynier: 'magazyn: przyjęcia, wydania, przesunięcia, inwentaryzacja, zamówienia zakupu',
+    ograniczony: 'tylko powiadomienia i własne sprawy – bez dostępu do działów i danych firmy',
     monter: 'tylko „Moje montaże” własnej ekipy, bez finansów',
     serwisant: 'tylko „Moje serwisy” – zlecenia przypisane do niego: status, zdjęcia, protokół z podpisem',
     odczyty: 'tylko „Odczyty” – obiekty, klienci, terminy i wykonanie odczytów, bez finansów'
@@ -55,7 +59,7 @@
   }
   function accountForm(a, M, inst, after) {
     const isNew = !a, self = a && a.id === U().me().id, d = a || { role: 'monter', extra_roles: [], is_active: true };
-    const extras = ['uzytkownik', 'kierownik', 'rozliczajacy', 'monter', 'serwisant', 'odczyty'];
+    const extras = ['wlasciciel', 'uzytkownik', 'kierownik', 'rozliczajacy', 'ksiegowosc', 'magazynier', 'monter', 'serwisant', 'odczyty'];
     const free = inst.filter(i => i.is_active && (!i.user_id || (a && i.user_id === a.id)));
     modal(isNew ? 'Nowe konto pracownika' : 'Konto ' + a.login, `
       ${isNew ? field('a-login', 'Login (do logowania)', '<input id="a-login" name="login" required maxlength="64" autocapitalize="none" autocomplete="off" placeholder="np. j.kowalski">') : ''}

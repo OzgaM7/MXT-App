@@ -15,7 +15,7 @@ import config
 import kalendarz
 from narzedzia import Rozmowa
 
-DZIALY_MXT = {"podzielniki", "ubezpieczenia", "czesci", "taxi", "inne"}
+DZIALY_MXT = {"podzielniki", "ubezpieczenia", "czesci", "inne"}
 
 
 def wynik(r: Rozmowa) -> str:

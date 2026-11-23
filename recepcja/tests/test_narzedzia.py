@@ -79,7 +79,7 @@ def test_ubezpieczenia_bez_adresu_i_osobny_kalendarz(u):
     assert run(N.sprawdz_wolne_terminy(rozmowa(), u, {"dzial": "podzielniki"}))["terminy"][0]["termin"] == w["terminy"][0]["termin"]   # inny dział – termin wolny
 
 
-def test_dzialy_bez_rezerwacji_i_wylaczone(u):
+def test_dzialy_bez_rezerwacji_i_nieobslugiwane(u):  # MXT nie obsługuje taxi
     r = rozmowa()
     assert "nie rezerwuje" in run(N.sprawdz_wolne_terminy(r, u, {"dzial": "czesci"}))["blad"]
     assert "nie jest obsługiwany" in run(N.sprawdz_wolne_terminy(r, u, {"dzial": "taxi"}))["blad"]

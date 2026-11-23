@@ -14,7 +14,7 @@
   let tab = 'oferty', lastCalc = null;
 
   async function page(root, path, alive) {
-    const body = U().deptFrame(root, 'Sprzedaż części i eksport', TABS, tab, t => { tab = t; reload(); });
+    const body = U().deptFrame(root, 'Sprzedaż części samochodowych', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
     await ({ oferty, kalkulacje, eksport, historia }[tab])(panel, reload, alive);

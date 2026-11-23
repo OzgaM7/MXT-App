@@ -2,8 +2,8 @@
 (() => {
   // Każdy dział ma własne logo (public/logos): kafelek wyboru, nagłówek strony działu i dokumenty PDF.
   const DEPARTMENTS = [
-    { slug: 'podzielniki-i-montaze', name: 'Podzielniki i Montaże', logo: { src: '/logos/podzielniki.png', w: 640, h: 252, alt: 'MXT Ciepłomierze i podzielniki' } },
-    { slug: 'sprzedaz-czesci-i-eksport', name: 'Sprzedaż części i eksport', logo: { src: '/logos/express-parts.png', w: 640, h: 270, alt: 'Express Parts – części z dowozem' } },
+    { slug: 'podzielniki-i-montaze', name: 'Ciepłomierze i podzielniki', logo: { src: '/logos/podzielniki.png', w: 640, h: 252, alt: 'MXT Ciepłomierze i podzielniki' } },
+    { slug: 'sprzedaz-czesci-i-eksport', name: 'Sprzedaż części samochodowych', logo: { src: '/logos/express-parts.png', w: 640, h: 270, alt: 'Express Parts – części z dowozem' } },
     { slug: 'ubezpieczenia', name: 'Ubezpieczenia', logo: { src: '/logos/ubezpieczenia.png', w: 640, h: 253, alt: 'MXT Ubezpieczenia' } },
     { slug: 'asystent-telefoniczny', name: 'Asystent telefoniczny', logo: { src: '/logos/asystent-telefoniczny.png', w: 640, h: 241, alt: 'MXT Asystent telefoniczny' } }
   ];
@@ -138,12 +138,13 @@
     rc.classList.toggle('role-admin', !!u && u.role === 'administrator');
     renderMenu();
     bell.refresh();
+    $('#search-open').hidden = !can('search.global') || !!(u && u.mustChangePassword);
   }
   const can = p => !!user && (user.permissions || []).includes(p);
   // Ekran startowy zależy od roli: biuro – wybór działu, monter – „Moje montaże”, serwisant – „Moje serwisy”,
   // obsługa odczytów – „Odczyty”, pozostali – powiadomienia.
   const homePath = () => can('departments.view') ? '/dzialy' : can('field.own') ? '/moje-montaze' : can('service.own') ? '/moje-serwisy'
-    : can('readings.manage') ? '/odczyty' : '/powiadomienia';
+    : can('readings.manage') ? '/odczyty' : can('stock.view') && window.MXT_MODULES && window.MXT_MODULES.routes['/magazyn'] ? '/magazyn' : '/powiadomienia';
 
   // ---------- dzwonek: licznik nieprzeczytanych powiadomień ----------
   const bell = {
@@ -169,6 +170,7 @@
     }
   };
   $('#bell').addEventListener('click', () => { closeMenu(); go('/powiadomienia'); });
+  $('#search-open').addEventListener('click', () => { closeMenu(); window.MXT_UI.searchOpen(); });
   bell.start();
 
   // ---------- menu ----------

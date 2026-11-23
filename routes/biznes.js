@@ -15,7 +15,7 @@ const { wrap, idParam, V, bad, patchSql, sendPdf } = require('./_util');
 const r = express.Router();
 const use = requirePerm('tasks.use'), admin = requirePerm('approvals.decide');
 const DEPTS = ['podzielniki-i-montaze', 'sprzedaz-czesci-i-eksport', 'ubezpieczenia'];
-const CUSTOMER_KINDS = ['wspolnota', 'spoldzielnia', 'zarzadca', 'firma', 'klient_zagraniczny', 'inny'];
+const CUSTOMER_KINDS = ['osoba_prywatna', 'firma', 'wspolnota', 'spoldzielnia', 'zarzadca', 'klient_zagraniczny', 'inny'];
 
 // ======================= CRM =======================
 function customerFields(b, partial) {
@@ -33,7 +33,14 @@ function customerFields(b, partial) {
 }
 r.get('/klienci', use, wrap(async (req, res) => {
   const p = [], w = [];
-  if (req.query.q) { p.push('%' + String(req.query.q).slice(0, 80) + '%'); w.push(`(name ILIKE $${p.length} OR tax_id ILIKE $${p.length} OR address ILIKE $${p.length} OR email ILIKE $${p.length})`); }
+  if (req.query.q) {
+    // Nazwa, NIP, adres, e-mail, telefon (same cyfry – bez względu na spacje i myślniki) albo identyfikator klienta.
+    const q = String(req.query.q).trim().slice(0, 80), ph = q.replace(/\D/g, '');
+    p.push('%' + q.replace(/[\\%_]/g, m => '\\' + m) + '%', ph, q.toLowerCase());
+    const a = p.length - 2;
+    w.push(`(name ILIKE $${a} OR tax_id ILIKE $${a} OR address ILIKE $${a} OR email ILIKE $${a} OR id::text = $${a + 2}
+      OR (length($${a + 1}) >= 3 AND regexp_replace(phone, '\\D', '', 'g') LIKE '%' || $${a + 1} || '%'))`);
+  }
   if (DEPTS.includes(req.query.dzial)) { p.push(req.query.dzial); w.push(`$${p.length} = ANY(departments)`); }
   if (CUSTOMER_KINDS.includes(req.query.rodzaj)) { p.push(req.query.rodzaj); w.push(`kind = $${p.length}`); }
   const q = await pool.query(`SELECT c.*, (SELECT count(*)::int FROM buildings b WHERE b.customer_id = c.id) AS buildings,
@@ -71,7 +78,9 @@ r.get('/klienci/:id', idParam, use, wrap(async (req, res) => {
     pool.query(`SELECT coalesce(sum(amount_pln) FILTER (WHERE kind = 'przychod'), 0)::float AS przychod, coalesce(sum(amount_pln) FILTER (WHERE kind = 'koszt'), 0)::float AS koszt,
       coalesce(sum(amount_pln) FILTER (WHERE kind = 'przychod' AND paid_at IS NULL AND invoice_no <> ''), 0)::float AS nieoplacone FROM finance WHERE customer_id = $1`, [id])
   ]);
-  res.json({ ...c, buildings: b.rows, projects: pr.rows, offers: of.rows, sales: sa.rows, complaints: co.rows, communications: cm.rows, finance: fi.rows[0] });
+  // Sekcje innych modułów (zlecenia serwisowe, montaże, odczyty, polisy…) – tylko te, do których użytkownik ma uprawnienia.
+  const more = await require('../lib/customer360').load(req.user, id);
+  res.json({ ...c, buildings: b.rows, projects: pr.rows, offers: of.rows, sales: sa.rows, complaints: co.rows, communications: cm.rows, finance: fi.rows[0], ...more });
 }));
 r.post('/klienci/:id/komunikacja', idParam, use, wrap(async (req, res) => {
   const b = req.body || {};

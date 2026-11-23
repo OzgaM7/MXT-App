@@ -22,10 +22,12 @@
     ? `<a class="btn btn-secondary btn-sm btn-xl" href="/api/eksport/d1/${list}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v))}" download>Eksport do Excela</a>` : '';
 
   async function page(root, path, alive) {
-    // Link z powiadomienia może wskazać zakładkę (?tab=serwisy&z=<id>).
-    const want = new URLSearchParams(location.search).get('tab');
+    // Link z powiadomienia lub wyszukiwania może wskazać zakładkę i rekord:
+    // ?tab=serwisy&z=<zlecenie>, ?tab=budynki&b=<budynek>, ?tab=harmonogram&m=<montaż>, ?tab=urzadzenia&q=<numer seryjny>.
+    const sp = new URLSearchParams(location.search), want = sp.get('tab');
     if (want && TABS.some(([k]) => k === want)) tab = want;
-    const body = U().deptFrame(root, 'Podzielniki i Montaże', TABS, tab, t => { tab = t; reload(); });
+    if (tab === 'urzadzenia' && sp.get('q')) { st.devQ = sp.get('q').slice(0, 80); st.devTyp = ''; st.devSt = ''; st.devPage = 1; }
+    const body = U().deptFrame(root, 'Ciepłomierze i podzielniki', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     // Liczby działu: KPI harmonogramu i liczniki w menu (serwisy do przydzielenia, odczyty po terminie, otwarte reklamacje).
     S = Promise.all([api('d1/podsumowanie'), api('serwisy/podsumowanie').catch(() => null), api('odczyty/podsumowanie').catch(() => null)]);
@@ -41,6 +43,12 @@
     if (!alive()) return;
     body.replaceChildren(panel);
     U().wsHoist(root);
+    // Parametry z linku działają raz (kolejne przełączenia zakładek nie wracają do zakładki z adresu).
+    if (location.search) history.replaceState({}, '', location.pathname);
+    const ub = sp.get('b'), um = sp.get('m'), uk = sp.get('k');
+    if (ub && tab === 'budynki') buildingCard(ub, reload).catch(e => toast(e.message));
+    if (um && tab === 'harmonogram') api('d1/montaze/' + um).then(x => installationForm(x, reload)).catch(e => toast(e.message));
+    if (uk && tab === 'rozliczenia' && window.MXT_PROJEKT) window.MXT_PROJEKT.open(uk, reload);
     // Agenci AI działu pod harmonogramem i ewidencją budynków – najważniejsze dane działu zostają na górze.
     if (['budynki', 'harmonogram'].includes(tab)) await B().agentsStrip(panel, DEP, 'beforeend');
   }
@@ -375,10 +383,14 @@
         + sel('hf-s', 'status', 'Status', [['', 'Wszystkie statusy'], ['aktywne', 'Aktywne (bez odebranych)'], ...Object.entries(INST_ST)])
         + (hst.widok === 'lista' ? sel('hf-z', 'zakres', 'Zakres', [['biezace', 'Od ' + fd(from14())], ['wszystkie', 'Wszystkie terminy']]) : '');
       const n = xs.length;
-      view.innerHTML = `${hst.widok !== 'lista' ? nav(hst.widok === 'tydzien' ? 'w' : 'm') : ''}<div class="hm-bar">${filters}<span class="hm-count">${esc(nMont(n))}</span></div>
+      view.innerHTML = `${hst.widok !== 'lista' ? nav(hst.widok === 'tydzien' ? 'w' : 'm') : ''}<div class="hm-bar">${filters}<div class="hm-sv"></div><span class="hm-count">${esc(nMont(n))}</span></div>
         ${hst.widok === 'lista' ? listHtml(xs) : hst.widok === 'tydzien' ? weekHtml(xs) : monthHtml(xs)}
         ${hst.widok !== 'lista' && !n ? `<p class="hm-empty">${hst.ekipa || hst.status ? 'Brak montaży dla wybranych filtrów.' : 'W tym okresie nie ma montaży.'}</p>` : ''}`;
       grid.classList.toggle('hm-wide', hst.widok !== 'lista');   // tydzień i miesiąc na całą szerokość
+      // Zapisane widoki: widok kalendarza i filtry (ekipa, status, zakres) – własne dla każdego użytkownika.
+      U().savedViews(view.querySelector('.hm-sv'), 'harmonogram', () => ({ widok: hst.widok, zakres: hst.zakres, ekipa: hst.ekipa, status: hst.status }),
+        p => apply({ widok: ['lista', 'tydzien', 'miesiac'].includes(p.widok) ? p.widok : 'lista', zakres: p.zakres === 'wszystkie' ? 'wszystkie' : 'biezace',
+          ekipa: typeof p.ekipa === 'string' ? p.ekipa : '', status: typeof p.status === 'string' ? p.status : '' }));
       views.forEach(v => { const o = v.dataset.v === hst.widok; v.classList.toggle('seg-on', o); v.setAttribute('aria-pressed', String(o)); });
       setSub(hst.widok === 'tydzien' ? weekLabel(weekStart(cursor())) : hst.widok === 'miesiac' ? monthLabel(cursor())
         : hst.zakres === 'biezace' ? 'Od dziś i ostatnie 14 dni · ' + nMont(n) : 'Wszystkie terminy · ' + nMont(n));
@@ -482,5 +494,5 @@
   // ---------- oferty (Handlowiec) ----------
   async function oferty(body, reload) { await B().offersPanel(body, DEP, reload); }
 
-  window.MXT_MODULES.register(PATH, { title: 'Podzielniki i Montaże', perm: 'departments.view', render: page });
+  window.MXT_MODULES.register(PATH, { title: 'Ciepłomierze i podzielniki', perm: 'departments.view', render: page });
 })();

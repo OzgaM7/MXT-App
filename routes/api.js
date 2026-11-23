@@ -254,6 +254,8 @@ r.use('/eksport', require('./eksport'));
 r.use('/asystent', require('./asystent').office);
 // Strefa GHOST: osobne hasło wejścia, odblokowanie w bieżącej sesji (routes/ghost.js).
 r.use('/ghost', require('./ghost'));
+// ERP: globalne wyszukiwanie i zapisane widoki list (routes/szukaj.js).
+r.use('/', require('./szukaj'));
 
 r.get('/security/agents-stop', requirePerm('security.audit'), wrap(async (req, res) => {
   const q = await pool.query(`SELECT s.value, s.updated_at, u.login AS updated_by_login FROM system_settings s LEFT JOIN users u ON u.id = s.updated_by WHERE key = 'agents_stopped'`);

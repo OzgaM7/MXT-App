@@ -18,7 +18,7 @@ from pipecat.adapters.llm.schemas.tools_schema import ToolsSchema
 import config
 import kalendarz
 
-RODZAJE_ZGLOSZEN = ["zapytanie_czesci", "oddzwonienie", "taxi", "inne"]
+RODZAJE_ZGLOSZEN = ["zapytanie_czesci", "oddzwonienie", "inne"]
 
 
 @dataclass
@@ -151,12 +151,10 @@ async def zapisz_zgloszenie(r: Rozmowa, u: Uslugi, a: dict) -> dict:
     rodzaj = a.get("rodzaj") or "inne"
     if rodzaj not in RODZAJE_ZGLOSZEN:
         return {"blad": f"Nieznany rodzaj zgłoszenia. Dostępne: {', '.join(RODZAJE_ZGLOSZEN)}."}
-    if rodzaj == "taxi" and not config.DZIALY["taxi"].aktywny:
-        return {"blad": "Dział taxi jest wyłączony."}
     opis, tel = (a.get("opis") or "").strip(), telefon(a.get("telefon", ""), r.telefon)
     if not opis or not tel:
         return {"blad": "Brakuje danych: " + ", ".join(n for n, v in (("opis sprawy", opis), ("numer telefonu", tel)) if not v) + "."}
-    dane = {k: str(a[k]).strip()[:500] for k in ("pojazd", "vin", "czesc", "skad", "dokad", "kiedy", "liczba_osob") if a.get(k)}
+    dane = {k: str(a[k]).strip()[:500] for k in ("pojazd", "vin", "czesc") if a.get(k)}
     r.zgloszenia.append({"dzial": d.klucz, "rodzaj": rodzaj, "imie_nazwisko": (a.get("imie_nazwisko") or "").strip(), "telefon": tel,
                          "opis": opis, "pilne": bool(a.get("pilne")), "dane": dane})
     r.dzial = r.dzial or d.klucz
@@ -204,8 +202,7 @@ def schematy() -> ToolsSchema:
                        properties={"dzial": {"type": "string", "enum": dzialy}, "rodzaj": {"type": "string", "enum": RODZAJE_ZGLOSZEN},
                                    "imie_nazwisko": s("Imię i nazwisko klienta."), "telefon": s("Numer kontaktowy; pusty = numer dzwoniącego."),
                                    "opis": s("Czego dotyczy sprawa."), "pilne": {"type": "boolean", "description": "Awaria lub sprawa pilna."},
-                                   "pojazd": s("Marka i model pojazdu (części)."), "vin": s("Numer VIN (części)."), "czesc": s("Szukana część (części)."),
-                                   "skad": s("Skąd (taxi)."), "dokad": s("Dokąd (taxi)."), "kiedy": s("Na kiedy (taxi)."), "liczba_osob": s("Liczba osób (taxi).")},
+                                   "pojazd": s("Marka i model pojazdu (części)."), "vin": s("Numer VIN (części)."), "czesc": s("Szukana część (części).")},
                        required=["dzial", "rodzaj", "opis"]),
         FunctionSchema(name="przekaz_do_konsultanta", description="Łączy z pracownikiem: prośba o człowieka, reklamacja, zdenerwowany klient. Działa tylko w godzinach pracy.",
                        properties={"powod": s("Krótko: dlaczego klient chce rozmawiać z pracownikiem.")}, required=["powod"]),

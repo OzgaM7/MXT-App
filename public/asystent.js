@@ -7,12 +7,12 @@
   const field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), chip = (...a) => U().chip(...a), fdt = v => U().fdt(v);
   const PATH = '/dzial/asystent-telefoniczny';
   const TABS = [['rozmowy', 'Rozmowy'], ['zgloszenia', 'Zgłoszenia'], ['integracja', 'Integracja z botem', '', 'Integracja']];
-  const DEPT = { podzielniki: 'Podzielniki', ubezpieczenia: 'Ubezpieczenia', czesci: 'Części', taxi: 'Taxi', inne: 'Inne' };
+  const DEPT = { podzielniki: 'Podzielniki', ubezpieczenia: 'Ubezpieczenia', czesci: 'Części', inne: 'Inne' };
   const OUT = { rezerwacja: 'Rezerwacja', zgloszenie: 'Zgłoszenie', oddzwonienie: 'Oddzwonienie', przekazanie: 'Przekazana', informacja: 'Informacja', przerwana: 'Przerwana' };
   const OUT_CLS = { rezerwacja: 'ok', zgloszenie: 'ok', oddzwonienie: 'ok', przekazanie: 'w_toku', informacja: 'off', przerwana: 'warn' };
   const REV = { nowa: 'Do przejrzenia', sprawdzona: 'Sprawdzona', blad_danych: 'Błąd w danych' };
   const REV_CLS = { nowa: 'warn', sprawdzona: 'ok', blad_danych: 'deny' };
-  const KIND = { wizyta_serwisowa: 'Wizyta serwisowa', rozmowa_agent: 'Rozmowa z agentem', zapytanie_czesci: 'Zapytanie o części', oddzwonienie: 'Prośba o oddzwonienie', taxi: 'Zamówienie taxi', inne: 'Inna sprawa' };
+  const KIND = { wizyta_serwisowa: 'Wizyta serwisowa', rozmowa_agent: 'Rozmowa z agentem', zapytanie_czesci: 'Zapytanie o części', oddzwonienie: 'Prośba o oddzwonienie', inne: 'Inna sprawa' };
   const RQ = { nowe: 'Nowe', w_toku: 'W toku', zalatwione: 'Załatwione', anulowane: 'Anulowane' };
   const RQ_CLS = { nowe: 'warn', w_toku: 'w_toku', zalatwione: 'ok', anulowane: 'off' };
   let tab = 'rozmowy';

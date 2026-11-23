@@ -65,10 +65,6 @@ DZIALY: dict[str, Dzial] = {
         opis="zbiera zapytanie o część do oddzwonienia przez sprzedawcę",
         pytania=["imię i nazwisko", "marka i model pojazdu", "numer VIN, jeśli klient ma go pod ręką", "jakiej części szuka", "numer telefonu do kontaktu"],
         zasady=["Nie podawaj cen ani dostępności części – sprzedawca oddzwoni."]),
-    "taxi": Dzial(
-        klucz="taxi", nazwa="Taxi", aktywny=_flag("TAXI_WLACZONE", False),
-        opis="przyjmuje zamówienie przejazdu",
-        pytania=["skąd", "dokąd", "na kiedy", "liczba osób", "numer telefonu do kontaktu"]),
 }
 
 

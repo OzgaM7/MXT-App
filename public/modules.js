@@ -406,7 +406,7 @@
         <div class="kill-text"><h2 class="panel-title">Wyłącznik wszystkich agentów AI</h2>
           <p>${stop.stopped ? '<b>Agenci są zatrzymani.</b> Żadna operacja zgłoszona przez agenta nie zostanie przyjęta ani wykonana.' : 'Agenci mogą pracować w granicach swoich uprawnień.'}</p>
           ${stop.updated_by ? `<p class="muted small">Ostatnia zmiana: ${esc(stop.updated_by)} · ${esc(fdt(stop.updated_at))}${stop.reason ? ' · „' + esc(stop.reason) + '”' : ''}</p>` : ''}
-          <p class="muted small">Agenci AI zostaną dodani w etapie 2; wyłącznik działa już teraz po stronie serwera.</p></div>
+</div>
         <button type="button" class="btn ${stop.stopped ? 'btn-primary' : 'btn-danger'} btn-kill" id="kill">${stop.stopped ? 'Wznów pracę agentów' : 'Zatrzymaj wszystkich agentów'}</button>
       </section>
       <section class="panel">
@@ -787,7 +787,8 @@
     wiecej: '<path d="M4 6h16M4 12h16M4 18h16"/>', dot: '<circle cx="12" cy="12" r="3"/>',
     chev: '<path d="M6 9l6 6 6-6"/>', left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     up: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>', down: '<path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
-    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', ok: '<path d="M5 12l5 5L20 7"/>', all: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', ok: '<path d="M5 12l5 5L20 7"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', views: '<path d="M4 6h16M4 12h10M4 18h6"/>', all: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
   };
   const icon = (k, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC.dot}</svg>`;
   function deptFrame(root, title, tabs, active, onTab) {
@@ -863,7 +864,80 @@
     if (!t.closest('.pop') || t.closest('.pop button, .pop a')) closePops();
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
-  window.MXT_UI = { esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today };
+
+  // ---------- globalne wyszukiwanie (Ctrl+K / przycisk lupy): klienci, budynki, zlecenia, urządzenia, polisy… ----------
+  // Wyniki tylko z modułów, do których konto ma uprawnienia (filtruje serwer: lib/search.js).
+  let sp = null;
+  function searchOpen(initial) {
+    if (!has('search.global')) return;
+    if (sp) { sp.querySelector('input').focus(); return; }
+    sp = document.createElement('div');
+    sp.className = 'sp';
+    sp.innerHTML = `<div class="sp-box" role="dialog" aria-modal="true" aria-label="Szukaj w MXT">
+      <div class="sp-in">${icon('search')}<label class="visually-hidden" for="sp-q">Szukaj</label>
+        <input id="sp-q" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Szukaj: klient, telefon, adres, numer zlecenia, numer seryjny…" maxlength="80">
+        <kbd>Esc</kbd></div>
+      <div class="sp-res" id="sp-res" role="listbox" aria-label="Wyniki"><p class="sp-hint">Wpisz co najmniej 2 znaki.</p></div></div>`;
+    document.body.append(sp);
+    const input = sp.querySelector('input'), res = sp.querySelector('#sp-res');
+    let timer = null, seq = 0, sel = -1;
+    const close = () => { if (!sp) return; sp.remove(); sp = null; document.removeEventListener('keydown', onKey, true); };
+    const items = () => [...res.querySelectorAll('.sp-i')];
+    const mark = i => { const it = items(); sel = Math.max(0, Math.min(it.length - 1, i)); it.forEach((x, k) => x.setAttribute('aria-selected', String(k === sel))); if (it[sel]) it[sel].scrollIntoView({ block: 'nearest' }); };
+    const open = el => { close(); go(el.dataset.link); };
+    async function run() {
+      const q = input.value.trim(), my = ++seq;
+      if (q.length < 2) { res.innerHTML = '<p class="sp-hint">Wpisz co najmniej 2 znaki.</p>'; sel = -1; return; }
+      let d; try { d = await api('szukaj?q=' + encodeURIComponent(q)); } catch (e) { if (my === seq) res.innerHTML = `<p class="sp-hint">${esc(e.message)}</p>`; return; }
+      if (my !== seq || !sp) return;
+      res.innerHTML = d.groups.length ? d.groups.map(g => `<section class="sp-g"><h3>${esc(g.label)}</h3>${g.items.map(x =>
+        `<button type="button" class="sp-i" role="option" aria-selected="false" data-link="${esc(x.link)}"><b>${esc(x.title)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</button>`).join('')}</section>`).join('')
+        : `<p class="sp-hint">Nic nie znaleziono dla „${esc(q)}”.</p>`;
+      items().forEach(b => b.addEventListener('click', () => open(b)));
+      mark(0);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); mark(sel + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mark(sel - 1); }
+      else if (e.key === 'Enter' && document.activeElement === input) { e.preventDefault(); const it = items()[sel]; if (it) open(it); }
+    }
+    document.addEventListener('keydown', onKey, true);
+    sp.addEventListener('click', e => { if (e.target === sp) close(); });
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 180); });
+    if (initial) { input.value = initial; run(); }
+    input.focus();
+  }
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { if (!me() || !has('search.global')) return; e.preventDefault(); searchOpen(); }
+  });
+
+  // ---------- zapisane widoki list: „Widoki ▾” – wybór, zapis bieżących filtrów, usuwanie (tylko własne) ----------
+  // get(): bieżące ustawienia (obiekt), apply(params): zastosowanie zapisanego widoku.
+  function savedViews(holder, module, get, apply) {
+    holder.classList.add('dd', 'sv');
+    holder.innerHTML = `<button type="button" class="btn btn-secondary btn-sm" data-pop aria-haspopup="true" aria-expanded="false">${icon('views', 'ic ic-sm')}Widoki${icon('chev', 'ic ic-sm')}</button>
+      <div class="pop dd-menu sv-menu" hidden><p class="sv-empty">Wczytywanie…</p></div>`;
+    const menu = holder.querySelector('.sv-menu');
+    const load = async () => {
+      let list = [];
+      try { list = await api('widoki?modul=' + encodeURIComponent(module)); } catch (e) { menu.innerHTML = `<p class="sv-empty">${esc(e.message)}</p>`; return; }
+      menu.innerHTML = (list.length ? list.map(v => `<div class="sv-row"><button type="button" class="pop-i sv-use" data-v="${esc(v.id)}">${esc(v.name)}</button>
+          <button type="button" class="sv-del" data-del="${esc(v.id)}" aria-label="Usuń widok ${esc(v.name)}" title="Usuń">×</button></div>`).join('') : '<p class="sv-empty">Brak zapisanych widoków.</p>')
+        + `<button type="button" class="pop-i pop-all" data-save>${icon('plus', 'ic ic-sm')}Zapisz bieżący widok…</button>`;
+      menu.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => { const v = list.find(x => x.id === b.dataset.v); if (v) apply(v.params); }));
+      menu.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        try { await api('widoki/' + b.dataset.del, null, 'DELETE'); toast('Widok usunięty.'); load(); } catch (x) { toast(x.message); }
+      }));
+      menu.querySelector('[data-save]').addEventListener('click', () => modal('Zapisz widok', field('sv-n', 'Nazwa widoku', '<input id="sv-n" name="name" required maxlength="80" placeholder="np. Ekipa 1 – aktywne">') +
+        '<p class="muted small">Widok zapamiętuje bieżące filtry i sposób wyświetlania. Ta sama nazwa nadpisuje wcześniejszy widok.</p>',
+      { submit: 'Zapisz', onSubmit: async f => { await api('widoki', { modul: module, nazwa: val(f, 'name'), params: get() }); toast('Widok zapisany.'); load(); } }));
+    };
+    holder.querySelector('[data-pop]').addEventListener('click', load);
+  }
+
+  window.MXT_UI = { esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today, searchOpen, savedViews };
 
   window.MXT_MODULES = { routes: ROUTES, render, menu, register };
 })();
