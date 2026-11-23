@@ -165,9 +165,12 @@ img { max-width: 100%; }
 .tile[data-dept="podzielniki-i-montaze"] { --tc: #da141e; --tt: #b8101a; }
 .tile[data-dept="sprzedaz-czesci-i-eksport"] { --tc: #db0008; --tt: #b80007; }
 .tile[data-dept="ubezpieczenia"] { --tc: #b59542; --tt: #7d6424; }
-.tiles { width: 100%; display: grid; grid-template-columns: 1fr; gap: 14px; }
-@media (min-width: 760px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 18px; } }
-@media (min-width: 1100px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+.tile[data-dept="asystent-telefoniczny"] { --tc: #1e9e63; --tt: #167a4c; }   /* zieleń z logo; tekst ciemniejszy (kontrast 5,4:1) */
+/* 5 kafelków: na komputerze 3 + 2 (ostatni rząd wyśrodkowany), na tablecie po 2, na telefonie po 1. */
+.tiles { width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.tiles > .tile { flex: 1 1 100%; }
+@media (min-width: 760px) { .tiles { gap: 18px; } .tiles > .tile { flex: 0 1 calc((100% - 18px) / 2); } }
+@media (min-width: 1100px) { .tiles > .tile { flex-basis: calc((100% - 36px) / 3); } }
 .tile {
   font: inherit; color: var(--ink); text-align: center; cursor: pointer;
   background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
@@ -181,6 +184,7 @@ img { max-width: 100%; }
 .tile:nth-child(2) { animation-delay: .06s; }
 .tile:nth-child(3) { animation-delay: .12s; }
 .tile:nth-child(4) { animation-delay: .18s; }
+.tile:nth-child(5) { animation-delay: .24s; }
 .tile-logo { height: 84px; display: flex; align-items: center; justify-content: center; padding: 4px 8px 0; }
 .tile-logo img { display: block; width: auto; height: auto; max-width: min(100%, 230px); max-height: 100%; }
 .tile-body { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }

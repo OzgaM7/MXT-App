@@ -4,7 +4,8 @@
   const DEPARTMENTS = [
     { slug: 'podzielniki-i-montaze', name: 'Podzielniki i Montaże', logo: { src: '/logos/podzielniki.png', w: 640, h: 252, alt: 'MXT Ciepłomierze i podzielniki' } },
     { slug: 'sprzedaz-czesci-i-eksport', name: 'Sprzedaż części i eksport', logo: { src: '/logos/express-parts.png', w: 640, h: 270, alt: 'Express Parts – części z dowozem' } },
-    { slug: 'ubezpieczenia', name: 'Ubezpieczenia', logo: { src: '/logos/ubezpieczenia.png', w: 640, h: 253, alt: 'MXT Ubezpieczenia' } }
+    { slug: 'ubezpieczenia', name: 'Ubezpieczenia', logo: { src: '/logos/ubezpieczenia.png', w: 640, h: 253, alt: 'MXT Ubezpieczenia' } },
+    { slug: 'asystent-telefoniczny', name: 'Asystent telefoniczny', logo: { src: '/logos/asystent-telefoniczny.png', w: 640, h: 241, alt: 'MXT Asystent telefoniczny' } }
   ];
   const MAIN_LOGO = { src: '/logo.png', w: 1000, h: 274, alt: 'MXT' };
   const WELCOME_MS = 2500;
