@@ -1,2 +1,7 @@
 node_modules/
 .env
+recepcja/.venv/
+recepcja/.env
+recepcja/*.db
+recepcja/**/__pycache__/
+recepcja/.pytest_cache/

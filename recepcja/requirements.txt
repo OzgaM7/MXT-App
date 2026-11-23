@@ -1,0 +1,12 @@
+# MXT Recepcja AI – zależności (Python 3.12). Wersje przypięte; aktualizacja: zmień numer i uruchom testy (pytest).
+pipecat-ai[anthropic,deepgram,cartesia,elevenlabs,silero,websocket,runner,webrtc]==1.16.0
+anthropic==1.17.0
+twilio==9.13.0
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+python-dotenv==1.2.4
+loguru==0.7.3
+# Kalendarz Google (KALENDARZ=google) – odkomentuj, gdy będzie potrzebny:
+# google-api-python-client==2.199.0
+# google-auth==2.62.2

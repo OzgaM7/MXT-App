@@ -99,7 +99,7 @@ Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w program
 
 ## Asystent telefoniczny (MXT Recepcja AI)
 
-Dział z kafelkiem „Asystent telefoniczny” to panel dla bota telefonicznego „Ola” z planu MXT Recepcja AI (Pipecat, Twilio, Deepgram, Claude, Cartesia). Bot działa osobno i po każdej rozmowie wysyła ją do aplikacji.
+Dział z kafelkiem „Asystent telefoniczny” to panel dla bota telefonicznego „Ola” z planu MXT Recepcja AI (Pipecat, Twilio, Deepgram, Claude, Cartesia). Bot działa osobno i po każdej rozmowie wysyła ją do aplikacji. **Kod bota jest w katalogu [`recepcja/`](recepcja/README.md)** (Python 3.12, osobna usługa – instrukcja etapów 1–4 w jego README).
 
 - **Rozmowy:** wskaźniki z planu za 7/14/30/90 dni (rozmowy zakończone rezerwacją lub zgłoszeniem – cel ≥ 70%, przekazane do pracownika – cel < 20%, pomyłki w danych – cel ≤ 2%, średni czas odpowiedzi – cel < 1,5 s), lista z filtrami, karta z transkrypcją jak czat i przeglądem („Sprawdzona” / „Błąd w danych” z opisem – podstawa wskaźnika pomyłek). Rozmowy testowe są oznaczone i nie liczą się do wskaźników.
 - **Zgłoszenia:** kolejka spraw do załatwienia przez biuro (oddzwonienia, zapytania o części, rozmowy z agentem ubezpieczeń, taxi), pilne na górze; „Biorę”, „Załatwione” (z notatką), „Anuluj” (z powodem). Kierownictwo (administrator, kierownik) dostaje powiadomienie z linkiem do zgłoszenia.
