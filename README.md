@@ -97,6 +97,17 @@ Terminy i wykonanie odczytów – bez wartości odczytów (te zostają w program
   - **włączanie:** odczyt działa, gdy serwer ma `ANTHROPIC_API_KEY` oraz `DOC_AI=live` (w `render.yaml` domyślnie) albo `AI_MODE=live`; agenci mogą zostać w trybie testowym. Bez klucza, przy wyłączniku AI w Security & Audit albo gdy model nie odczyta dokumentu – ten sam formularz do uzupełnienia ręcznie, dokument i tak trafia do kontraktu.
 - **Testy:** `test/harmonogram.js`, 52 sprawdzenia (w tym atrapa API Claude: postać zapytania, propozycja, koszt, wyłącznik, odmowa), w ramach `npm test`.
 
+## Asystent telefoniczny (MXT Recepcja AI)
+
+Dział z kafelkiem „Asystent telefoniczny” to panel dla bota telefonicznego „Ola” z planu MXT Recepcja AI (Pipecat, Twilio, Deepgram, Claude, Cartesia). Bot działa osobno i po każdej rozmowie wysyła ją do aplikacji.
+
+- **Rozmowy:** wskaźniki z planu za 7/14/30/90 dni (rozmowy zakończone rezerwacją lub zgłoszeniem – cel ≥ 70%, przekazane do pracownika – cel < 20%, pomyłki w danych – cel ≤ 2%, średni czas odpowiedzi – cel < 1,5 s), lista z filtrami, karta z transkrypcją jak czat i przeglądem („Sprawdzona” / „Błąd w danych” z opisem – podstawa wskaźnika pomyłek). Rozmowy testowe są oznaczone i nie liczą się do wskaźników.
+- **Zgłoszenia:** kolejka spraw do załatwienia przez biuro (oddzwonienia, zapytania o części, rozmowy z agentem ubezpieczeń, taxi), pilne na górze; „Biorę”, „Załatwione” (z notatką), „Anuluj” (z powodem). Kierownictwo (administrator, kierownik) dostaje powiadomienie z linkiem do zgłoszenia.
+- **Wizyty serwisowe** umówione przez asystentkę (z adresem) stają się od razu **zleceniem w module Serwisy**: status „Nowe” (do weryfikacji), termin uzgodniony z klientem w opisie i jako termin realizacji, priorytet „pilny” dla awarii, powiadomienie kierownictwa. W kolejce zgłoszeń są wtedy „Załatwione – przekazano do Serwisów”.
+- **Integracja z botem:** `POST /api/asystent/webhook` z nagłówkiem `Authorization: Bearer <klucz>`. Klucz generuje administrator w zakładce „Integracja z botem” (pokazywany raz; w bazie tylko skrót SHA-256; nowy klucz unieważnia poprzedni). W bocie: `MXT_APP_WEBHOOK_URL` i `MXT_APP_WEBHOOK_TOKEN`. Ten sam `call_sid` wysłany drugi raz zwraca te same identyfikatory (bez duplikatów). Limit: 20 nieudanych prób w 15 minut na adres IP. Format danych i przykładowa rozmowa (JSON) są w zakładce; przycisk „Wyślij rozmowę testową” sprawdza całą drogę bez tworzenia zleceń i powiadomień.
+- **RODO:** transkrypcje usuwane po ustawionym okresie (domyślnie 90 dni, zgodnie z planem; minimum 7) – podsumowanie, wynik i zgłoszenia zostają. Rejestr operacji: `asystent.rozmowa` (aktor: system), `asystent.webhook` (odmowy), `asystent.klucz`, `asystent.ocena`, `asystent.zgloszenie`, `asystent.ustawienia`.
+- Eksport do Excela (arkusze Rozmowy i Zgłoszenia). Testy: `node test/asystent.js` (część `npm test`).
+
 ## Strefa GHOST
 
 - **Kafelek GHOST** na ekranie wyboru działu widzą wszyscy (konta bez wyboru działu – monter, serwisant, odczyty – mają GHOST w Menu). Kliknięcie otwiera osobny ekran logowania z logo i animowanym tłem („deszcz znaków” w kolorach logo; przy ustawieniu systemowym „ogranicz ruch” tło jest nieruchome).

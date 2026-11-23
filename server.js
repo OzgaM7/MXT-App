@@ -19,6 +19,8 @@ app.use(['/api/wiedza', '/api/szkolenia/admin'], express.json({ limit: '15mb' })
 app.use(['/api/d1/import/excel', '/api/d1/import/dokument'], express.json({ limit: '16mb' }));
 // Zdjęcia z telefonu (zmniejszone w przeglądarce) i protokół z podpisem w zleceniach serwisowych.
 app.use(['/api/serwisy/:id/zdjecia', '/api/serwisy/:id/protokol', '/api/moje/serwisy/:id/zdjecia', '/api/moje/serwisy/:id/protokol'], express.json({ limit: '4mb' }));
+// Asystent telefoniczny: rozmowa z pełną transkrypcją od bota.
+app.use('/api/asystent/webhook', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '200kb' }));
 app.use(cookieParser());
 // Ochrona przed CSRF: zapisujące żądania API muszą być JSON-em (formularz z innej strony nie ustawi tego nagłówka).
@@ -148,6 +150,8 @@ app.get('/api/health', async (req, res) => {
 // Integracje (n8n, skrzynka pocztowa): bez sesji, uwierzytelnianie tokenem Bearer o określonym zakresie.
 app.use('/api/integracje', require('./routes/integracje'));
 
+// Asystent telefoniczny: bot wysyła rozmowy z własnym kluczem (bez sesji), dlatego przed sprawdzaniem logowania.
+app.use('/api/asystent/webhook', require('./routes/asystent').webhook);
 // Moduły MXT Business OS: każde żądanie wymaga zalogowania, uprawnienia sprawdza lib/rbac.js.
 app.use('/api', async (req, res, next) => {
   try {

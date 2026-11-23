@@ -246,6 +246,32 @@ img { max-width: 100%; }
   color: #dfe7ff; background: rgba(6, 9, 20, .7); border: 1px solid rgba(255, 255, 255, .16); border-radius: 999px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
 .ghost-back:hover { border-color: #41d1ff; }
 
+/* ---------- dział Asystent telefoniczny ---------- */
+.kpi-goal { font-size: 12px; color: var(--muted); }
+div.kpi { cursor: default; }
+.ast-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; margin: 0 0 12px; }
+.ast-meta dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ast-meta dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.ast-tr { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.ast-msg { max-width: 82%; padding: 8px 12px; border-radius: 14px; line-height: 1.45; font-size: 14px; }
+.ast-who { display: block; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--muted); margin-bottom: 2px; }
+.ast-asystent { justify-self: start; background: var(--info-soft); border-bottom-left-radius: 4px; }
+.ast-klient { justify-self: end; background: #e3f3ea; border-bottom-right-radius: 4px; }
+.ast-system { justify-self: center; background: none; color: var(--muted); font-size: 12px; }
+.ast-rqs, .ast-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ast-rq { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 3px; }
+.ast-item { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; }
+.ast-item-main { display: grid; gap: 3px; min-width: 0; flex: 1 1 320px; overflow-wrap: anywhere; }
+.ast-item-act { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.ast-urgent { border-left-color: var(--danger); }
+.ast-focus { outline: 3px solid color-mix(in srgb, #1e9e63 35%, transparent); outline-offset: 2px; }
+.ast-tel { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.ast-tel:hover { text-decoration-color: currentColor; }
+.ast-code { font-size: 13px; overflow-wrap: anywhere; }
+.ast-pre { margin: 0; padding: 12px; border-radius: 10px; background: var(--dark); color: #f3f3ef; font-size: 12.5px; line-height: 1.5; overflow-x: auto; white-space: pre; }
+.ast-key { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; margin-bottom: 10px; }
+.ast-details summary { cursor: pointer; font-weight: 600; margin: 12px 0 8px; }
+
 /* ---------- pusta strona działu ---------- */
 .empty {
   width: 100%; max-width: 520px; margin-bottom: 24px;

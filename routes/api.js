@@ -250,6 +250,8 @@ r.use('/d1/import', require('./importy'));
 r.use('/odczyty', require('./odczyty'));
 // Eksport do Excela (XLSX) – zestawienia działu Podzielniki i Montaże.
 r.use('/eksport', require('./eksport'));
+// Asystent telefoniczny: panel rozmów i zgłoszeń z telefonu (webhook bota – server.js).
+r.use('/asystent', require('./asystent').office);
 // Strefa GHOST: osobne hasło wejścia, odblokowanie w bieżącej sesji (routes/ghost.js).
 r.use('/ghost', require('./ghost'));
 
