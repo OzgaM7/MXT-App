@@ -56,11 +56,16 @@
     '/ai-board': 'Agenci AI', '/ai-workforce': 'Agenci AI', '/karta-wynikow': 'Agenci AI', '/ustawienia-ai': 'Agenci AI', '/automatyzacje': 'Agenci AI',
     '/bezpieczenstwo': 'Administracja', '/konta': 'Administracja' };
   const FIELD = ['/odczyty', '/moje-serwisy', '/moje-montaze'];
+  // Moduły ERP (własne strony z zakładkami) dostępne z tego samego menu bocznego.
+  const ERP_NAV = { '/pulpit-wlasciciela': 'Zarządzanie', '/moj-czas': 'Zarządzanie', '/finanse-firmy': 'Firma', '/magazyn': 'Firma', '/pracownicy': 'Firma', '/szkolenia': 'Firma' };
+  const NAV_ORDER = ['/pulpit-wlasciciela', '/command-center', '/zadania', '/wnioski', '/akceptacje', '/moj-czas', '/finanse-firmy', '/crm', '/finanse', '/magazyn', '/pracownicy', '/wiedza', '/szkolenia', '/komunikacja', '/bi'];
   function navTabs(u) {
     const office = (u.permissions || []).includes('departments.view');
-    const list = TABS.filter(p => ROUTES[p] && allowed(u, ROUTES[p]) && !(office && FIELD.includes(p)));
+    const list = [...TABS, ...Object.keys(ERP_NAV)].filter((p, i, a) => a.indexOf(p) === i && ROUTES[p] && allowed(u, ROUTES[p]) && !(office && FIELD.includes(p)));
     const order = ['', 'Zarządzanie', 'Firma', 'Agenci AI', 'Administracja'];
-    return list.map(p => [p, ROUTES[p].title, GROUP[p] || '']).sort((a, b) => order.indexOf(a[2]) - order.indexOf(b[2]));
+    const pos = p => { const i = NAV_ORDER.indexOf(p); return i < 0 ? 999 + TABS.indexOf(p) : i; };
+    return list.map(p => [p, ROUTES[p].title, GROUP[p] || ERP_NAV[p] || ''])
+      .sort((a, b) => order.indexOf(a[2]) - order.indexOf(b[2]) || pos(a[0]) - pos(b[0]));
   }
   // Ramka modułów MXT Business OS – ten sam układ co działy i moduły ERP (menu boczne, ścieżka, nagłówek, menu dolne na telefonie).
   function frame(root, path, title, lead, actions) {
@@ -825,7 +830,8 @@
   const IC_PATH = { '/command-center': 'pulpit', '/zadania': 'ok', '/wnioski': 'dokumenty', '/akceptacje': 'zatwierdz', '/crm': 'klienci', '/finanse': 'wyniki',
     '/wiedza': 'wiedza', '/komunikacja': 'rozmowy', '/bi': 'analityka', '/ai-board': 'ai', '/ai-workforce': 'ai', '/karta-wynikow': 'rentownosc',
     '/ustawienia-ai': 'admin', '/automatyzacje': 'przeplywy', '/bezpieczenstwo': 'polisy', '/konta': 'kartoteka', '/odczyty': 'odczyty',
-    '/moje-serwisy': 'serwisy', '/moje-montaze': 'harmonogram' };
+    '/moje-serwisy': 'serwisy', '/moje-montaze': 'harmonogram', '/pulpit-wlasciciela': 'wyniki', '/moj-czas': 'czas', '/finanse-firmy': 'naleznosci',
+    '/magazyn': 'stany', '/pracownicy': 'nieobecnosci', '/szkolenia': 'postep' };
   const icon = (k, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC[IC_PATH[k]] || IC.dot}</svg>`;
   function deptFrame(root, title, tabs, active, onTab) {
     const slug = (location.pathname.match(/^\/dzial\/([a-z-]+)/) || [])[1] || '';
@@ -841,7 +847,8 @@
     const switcher = `<div class="ws-switch"><button type="button" class="ws-switch-b" data-pop aria-haspopup="true" aria-expanded="false">
         <span class="ws-switch-t"><span class="ws-k">${isDept ? 'Dział' : 'Moduł'}</span><span class="ws-n">${esc(dep.name)}</span></span>${icon('chev', 'ic ic-sm')}</button>
       <div class="pop ws-switch-menu" hidden>${deps.map(d => `<button type="button" class="pop-i${d.slug === slug ? ' on' : ''}" data-go="/dzial/${esc(d.slug)}"${d.slug === slug ? ' aria-current="true"' : ''}>${esc(d.name)}</button>`).join('')}
-        <button type="button" class="pop-i pop-all" data-go="/dzialy">${icon('all', 'ic ic-sm')}Wszystkie działy</button></div></div>`;
+        <button type="button" class="pop-i pop-all" data-go="/dzialy">${icon('all', 'ic ic-sm')}Wszystkie działy</button>
+        ${allowed(me(), ROUTES['/command-center']) ? `<button type="button" class="pop-i" data-go="${has('owner.dashboard') && ROUTES['/pulpit-wlasciciela'] ? '/pulpit-wlasciciela' : '/command-center'}">${icon('pulpit', 'ic ic-sm')}Moduły firmy (Business OS)</button>` : ''}</div></div>`;
     // Menu dolne (telefon): do 5 pozycji; przy większej liczbie 4 pierwsze + „Więcej” z pełną listą.
     const many = tabs.length > 5, first = many ? tabs.slice(0, 4) : tabs, moreOn = many && !first.some(on);
     root.innerHTML = `<div class="ws" data-dept="${esc(slug)}">

@@ -129,7 +129,7 @@
   const own = { od: presets().miesiac[1], do: today() };
   const ALV = { krytyczny: ['deny', 'Pilne'], ostrzezenie: ['warn', 'Uwaga'], info: ['teal', 'Informacja'] };
   async function ownerPage(root, path, alive) {
-    const body = U().deptFrame(root, 'Pulpit właściciela', [['pulpit', 'Pulpit właściciela']], 'pulpit', () => {});
+    const body = U().frame(root, path, 'Pulpit właściciela', '', '');   // wspólne menu boczne modułów
     const reload = () => U().render(path, root);
     const d = await api('wlasciciel?' + new URLSearchParams(own));
     if (!alive()) return;
