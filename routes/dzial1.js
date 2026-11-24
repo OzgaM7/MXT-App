@@ -19,8 +19,7 @@ const DEV_LABEL = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', c
 const INST_ST = ['zaplanowany', 'w_toku', 'wykonany', 'odebrany', 'anulowany'];
 
 // rentowność: przychody − koszty (PLN) z Finance Intelligence
-const PROFIT = (col) => `coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.${col} = x.id AND f.kind = 'przychod'), 0)::float AS przychod,
-  coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.${col} = x.id AND f.kind = 'koszt'), 0)::float AS koszt`;
+const { PROFIT } = require('../lib/erp/profit');   // przychody z finansów, koszty z księgi kosztów (materiały, robocizna)
 
 // ---------- budynki ----------
 function buildingFields(b, partial) {

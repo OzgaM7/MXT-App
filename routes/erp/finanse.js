@@ -41,10 +41,11 @@ async function poLines(c, list) {
 }
 const poTotal = (c, id) => c.query('UPDATE purchase_orders SET total_net = coalesce((SELECT sum(round(qty * unit_price, 2)) FROM purchase_order_lines WHERE order_id = $1), 0), updated_at = now() WHERE id = $1', [id]);
 r.get('/zakupy', requirePerm('stock.view'), wrap(async (req, res) => {
-  const w = PO_ST[req.query.status] ? `WHERE o.status = '${req.query.status}'` : req.query.otwarte === '1' ? `WHERE o.status IN ('szkic', 'zamowione', 'czesciowo')` : '';
+  const st = Object.hasOwn(PO_ST, req.query.status) ? req.query.status : null;
+  const w = st ? 'WHERE o.status = $1' : req.query.otwarte === '1' ? `WHERE o.status IN ('szkic', 'zamowione', 'czesciowo')` : '';
   res.json((await pool.query(`SELECT o.id, o.number, o.status, o.order_date, o.expected_date, o.total_net::float AS total_net, s.name AS supplier_name, w.code AS warehouse,
       (SELECT count(*)::int FROM purchase_order_lines l WHERE l.order_id = o.id) AS lines, (o.status IN ('zamowione', 'czesciowo') AND o.expected_date < ${TODAY}) AS late
-    FROM purchase_orders o JOIN suppliers s ON s.id = o.supplier_id JOIN warehouses w ON w.id = o.warehouse_id ${w} ORDER BY o.created_at DESC LIMIT 300`)).rows.map(o => ({ ...o, status_label: PO_ST[o.status] })));
+    FROM purchase_orders o JOIN suppliers s ON s.id = o.supplier_id JOIN warehouses w ON w.id = o.warehouse_id ${w} ORDER BY o.created_at DESC LIMIT 300`, st ? [st] : [])).rows.map(o => ({ ...o, status_label: PO_ST[o.status] })));
 }));
 r.get('/zakupy/:id', idParam, requirePerm('stock.view'), wrap(async (req, res) => { const o = await loadPo(pool, req.params.id); res.json({ ...o, status_label: PO_ST[o.status] }); }));
 r.post('/zakupy', buy, wrap(async (req, res) => {

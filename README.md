@@ -8,6 +8,38 @@ Moduły działów będą dodawane w kolejnych etapach.
 - **Hasła:** wyłącznie hash bcrypt (koszt 12)
 - **Sesja:** losowy token w ciasteczku httpOnly; w bazie zapisany jest tylko jego skrót SHA-256. Logowanie jest pamiętane 30 dni.
 
+## MXT ERP – zarządzanie firmą (etapy ERP 3–9)
+
+Rozbudowa istniejącej aplikacji o pełne zarządzanie firmą: trzy obszary działalności i moduły wspólne. Audyt, architektura,
+założenia i status etapów: [`docs/ERP-AUDYT-I-PLAN.md`](docs/ERP-AUDYT-I-PLAN.md). Wdrożenie, kopie zapasowe i wycofanie:
+[`docs/WDROZENIE-ERP.md`](docs/WDROZENIE-ERP.md).
+
+| Obszar / moduł | Adres | Najważniejsze funkcje |
+|---|---|---|
+| Ciepłomierze i podzielniki | `/dzial/podzielniki-i-montaze` | harmonogram montaży, wspólny rejestr zleceń (montaże, serwisy, odczyty), serwisy z kontrolą przydziału w 14 dni, odczyty per urządzenie, projekty z budżetem i protokołem miesięcznym, budynki i lokale, kartoteka urządzeń, pulpit działu |
+| Ubezpieczenia | `/dzial/ubezpieczenia` | wyłącznie rejestr podpisanych polis: zysk = kwota × marża / 100 (frontend, backend, baza), przypomnienie 30 dni przed końcem ochrony (Europe/Warsaw, bez duplikatów), polisy do odnowienia, odnowienie po potwierdzeniu, pulpit. Kwota polisy nie jest przychodem MXT |
+| Sprzedaż części samochodowych | `/dzial/sprzedaz-czesci-i-eksport` | zamówienia (rezerwacja → WZ → faktura → zapłata), zwroty i reklamacje, produkty z zamiennikami i marżą, analityka; dotychczasowe oferty, kalkulacje walutowe, dokumenty eksportowe |
+| Magazyn i zakupy | `/magazyn` | wiele magazynów, dokumenty PZ/WZ/RW/ZW/MM/INW, rezerwacje, minima, dostawcy, zamówienia zakupu z propozycjami z minimów |
+| Finanse firmy | `/finanse-firmy` | wyniki działów, należności z wiekowaniem, zobowiązania, zapłaty, przepływy, eksport XLSX dla księgowości, stan integracji |
+| Pulpit właściciela | `/pulpit-wlasciciela` | cała firma w okresie, alerty z linkami, operacje, polisy, części, magazyn, obciążenie zespołu |
+| Pracownicy, Mój czas pracy | `/pracownicy`, `/moj-czas` | kartoteka i stawki, nieobecności, ewidencja czasu (koszt robocizny) |
+| CRM, wyszukiwanie, widoki | Ctrl+K | karta klienta 360°, globalne wyszukiwanie, zapisane widoki list |
+
+**Role:** administrator, właściciel, kierownik, pracownik biurowy (użytkownik), rozliczający, księgowość, magazynier,
+monter, serwisant, odczyty (pracownicy terenowi), dostęp ograniczony. Uprawnienia sprawdza backend (`lib/rbac.js`),
+menu pokazuje tylko dostępne moduły.
+
+**Migracje ERP:** `db/016`–`db/020` – idempotentne i wyłącznie dodające (uruchamiane przy każdym starcie).
+
+**Testy ERP:** `test/erp-fundamenty.js`, `test/erp-operacje.js`, `test/erp-ubezpieczenia.js`, `test/erp-czesci-finanse.js`
+(część `npm test`, łącznie 1205 sprawdzeń całego zestawu) oraz test interfejsu w przeglądarce `npm run test:ui`
+(Playwright + Chromium: procesy z formularzy, wszystkie zakładki modułów ERP bez błędów, telefon, ograniczenia ról).
+
+**Kopia bazy:** `DATABASE_URL='…' sh scripts/kopia-bazy.sh` (szczegóły w `docs/WDROZENIE-ERP.md`).
+
+**Integracje:** przygotowana architektura, bez atrap – KSeF, program księgowy, SMS, kalendarz, mapy i API urządzeń czekają
+na dane dostępowe (stan: Finanse firmy → Eksport i integracje).
+
 ## Zmiana hasła przy pierwszym logowaniu
 
 - **Wymuszenie przez serwer:** konto z `must_change_password = true` (hasło startowe `1234` albo hasło tymczasowe po resecie) po zalogowaniu widzi tylko ekran „Ustaw własne hasło”. Każde inne API zwraca 403 z kodem `must_change_password`, także przy bezpośrednim wywołaniu.
@@ -270,6 +302,9 @@ Agenci działu (Handlowiec, Technik, Rozliczenia) są widoczni na stronie dział
 
 ### Sprzedaż części i eksport (`/dzial/sprzedaz-czesci-i-eksport`) – tylko 4 funkcje
 
+> Stan z etapu 3. W ERP dział nazywa się „Sprzedaż części samochodowych” i ma dodatkowo zamówienia, produkty z zamiennikami
+> i analitykę – patrz sekcja „MXT ERP” na początku.
+
 1. **Oferty:**
    - automatyczna kalkulacja z danych klienta (CRM) i pozycji: cena = koszt × (1 + marża) ÷ kurs NBP, albo cena ręczna; rabat;
    - każda zmiana to nowa wersja z PDF;
@@ -283,6 +318,9 @@ Agenci działu (Handlowiec, Technik, Rozliczenia) są widoczni na stronie dział
 Nie ma (zgodnie z założeniami): wyszukiwania po VIN, katalogu OEM i zamienników, porównywania dostawców, bazy Inter Cars, kontroli transportu.
 
 ### Ubezpieczenia (`/dzial/ubezpieczenia`) – tylko Platforma Szkoleniowa
+
+> Stan z etapu 3. W ERP dział Ubezpieczenia to rejestr polis; Platforma Szkoleniowa działa bez zmian jako moduł
+> „Szkolenia” (`/szkolenia`) – patrz sekcja „MXT ERP” na początku.
 
 - **Kursy:** podzielone na moduły i lekcje (tekst, PDF z podglądem, wideo z YouTube, Vimeo lub pliku https).
 - **Testy:** z progiem zaliczenia, ocenianie po stronie serwera. Poprawne odpowiedzi nie trafiają do przeglądarki uczestnika.
@@ -571,7 +609,14 @@ db/005_seed_agenci.sql    seed 9 agentów i domyślnych promptów (generowany: s
 db/006_etap3_…sql         etap 3: CRM, dokumenty, finanse, kursy walut, działy 1 i 2, reklamacje
 db/007_etap3_…sql         etap 3: platforma szkoleniowa
 db/008_etap4_…sql         etap 4: kolejka, harmonogram, poczta, automatyzacje, tokeny, oceny agentów
+db/009…015_…sql           kolory i logo, dział 1 (konta, serwisy, odczyty, importy), GHOST, asystent telefoniczny
+db/016…020_erp_…sql       ERP: role i fundamenty, operacje (lokale, urządzenia, projekty, czas pracy), magazyn, polisy, części i zakupy
+routes/erp/               ERP API: zlecenia i projekty, obiekty i odczyty urządzeń, magazyn, pracownicy, polisy, części, zakupy i finanse, pulpit właściciela
+lib/erp/stock.js          dokumenty magazynowe w transakcji (blokady stanów, średni koszt, rezerwacje)
+lib/erp/policies.js       zysk z polisy (arytmetyka całkowita) i przypomnienia 30 dni przed końcem ochrony
+lib/search.js, lib/customer360.js   globalne wyszukiwanie i karta klienta 360°
 scripts/migrate.js        wykonuje pliki db/*.sql po kolei (npm run migrate)
+scripts/kopia-bazy.sh     kopia zapasowa bazy (pg_dump) ze sprawdzeniem pliku
 scripts/hash.js           tworzy hash bcrypt dla dowolnego hasła (npm run hash -- "hasło")
 public/                   aplikacja: index.html, app.css, app.js, modules.js, biznes.js, dzial1.js, dzial2.js, szkolenia.js, etap4.js, konta.js (konta, powiadomienia), teren.js (Moje montaże), serwisy.js (serwisy: biuro i serwisant), odczyty.js (odczyty), montaze-import.js (import z Excela, wczytanie z umowy), logo, ikony, manifest PWA, service worker (cache + push)
 public/logo.png           logo MXT (Ubezpieczenia + Ciepłomierze i podzielniki) – logowanie, powitanie, nagłówki modułów
@@ -588,6 +633,9 @@ test/fundament.js         testy rozbudowy działu 1, etap 1 (konta, zasięg mont
 test/serwisy.js           testy zleceń serwisowych (termin 14 dni, przydział, zasięg serwisanta, zdjęcia, protokół z podpisem, przypomnienia)
 test/odczyty.js           testy odczytów (rola obsługi odczytów, wykonanie z kolejnym terminem, cofnięcie, przypomnienia, eksport)
 test/harmonogram.js       testy harmonogramu: import z Excela, wczytanie z umowy (tryb ręczny i atrapa API Claude)
+test/erp-*.js             testy ERP: fundamenty, dział operacyjny i magazyn, ubezpieczenia, części/zakupy/finanse/pulpit właściciela
+test/ui-erp.js            test interfejsu ERP w przeglądarce (npm run test:ui)
+public/erp-*.js           ERP w przeglądarce: operacje, magazyn, pracownicy, ubezpieczenia, części i zakupy, finanse firmy i pulpit właściciela
 ```
 
 ## Konta startowe

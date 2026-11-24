@@ -16,8 +16,7 @@ const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplom
 const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
 const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany', anulowany: 'Anulowany' };
 const PRJ_ST = { oferta: 'Oferta', w_realizacji: 'W realizacji', zakonczony: 'Zakończony', rozliczony: 'Rozliczony', anulowany: 'Anulowany' };
-const PROFIT = col => `coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.${col} = x.id AND f.kind = 'przychod'), 0)::float AS przychod,
-  coalesce((SELECT sum(amount_pln) FROM finance f WHERE f.${col} = x.id AND f.kind = 'koszt'), 0)::float AS koszt`;
+const { PROFIT } = require('../lib/erp/profit');   // te same przychody i koszty co zakładka „Rentowność”
 const margin = rows => rows.map(x => ({ ...x, marza: Math.round((x.przychod - x.koszt) * 100) / 100, marza_pct: x.przychod ? (x.przychod - x.koszt) / x.przychod : null }));
 const MONEY = [{ header: 'Przychody', key: 'przychod', type: 'pln', width: 14 }, { header: 'Koszty', key: 'koszt', type: 'pln', width: 14 },
   { header: 'Marża', key: 'marza', type: 'pln', width: 14 }, { header: 'Marża %', key: 'marza_pct', type: 'pct', width: 10 }];

@@ -5,3 +5,6 @@ recepcja/.env
 recepcja/*.db
 recepcja/**/__pycache__/
 recepcja/.pytest_cache/
+
+# kopie bazy (dane klientów) – nigdy do repozytorium
+*.dump

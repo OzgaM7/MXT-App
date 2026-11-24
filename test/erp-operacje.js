@@ -147,6 +147,14 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
     card = (await call('d1/projekty/' + P.id, null, BIU.c)).j;
     near(card.money.przychod, 5300, 'przychód projektu (montaż + serwis)');
     ok(card.money.marza === Math.round((card.money.przychod - card.money.koszt) * 100) / 100 && card.money.wykorzystanie_budzetu_pct > 0, 'marża i wykorzystanie budżetu');
+    // zakładka „Rentowność” liczy tak samo jak karta projektu: koszty z księgi kosztów (materiały z RW, robocizna z czasu pracy)
+    r = await call('d1/rentownosc', null, BIU.c);
+    const rp = r.j.projects.find(x => x.id === P.id), ri = r.j.installations.find(x => x.id === X.id), rb = r.j.buildings.find(x => x.id === B.id);
+    near(rp.przychod, card.money.przychod, 'rentowność kontraktu: przychód = karta projektu'); near(rp.koszt, card.money.koszt, 'rentowność kontraktu: koszt = karta projektu (z materiałami i robocizną)');
+    const instCost = (await pool.query(`SELECT sum(amount)::float s FROM cost_ledger WHERE installation_id = $1`, [X.id])).rows[0].s;
+    ok(instCost >= 220 + 150 && Math.abs(ri.koszt - instCost) < 0.011, 'rentowność montażu: materiały z RW i robocizna z czasu pracy (' + ri.koszt + ')');
+    ok(rb.koszt >= ri.koszt + (1100 - 110) - 0.011, 'rentowność budynku obejmuje materiały montażu i serwisu w budynku (' + rb.koszt + ')');
+    near(ri.marza, ri.przychod - ri.koszt, 'marża montażu = przychód − koszty');
 
     // ---------- lokale, urządzenia, historia ----------
     r = await call('d1/budynki/' + B.id + '/lokale', { seria: { od: 1, do: 5 } }, BIU.c); eq(r.j.added, 5, 'seria lokali 1–5');
