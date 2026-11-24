@@ -51,7 +51,12 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
       pg.on('pageerror', e => errs.push(`${who}: ${e.message}`));
       pg.on('response', r => { if (r.url().includes('/api/') && r.status() >= 500) errs.push(`${who}: HTTP ${r.status()} ${r.url().replace(BASE, '')}`); });
     };
-    const login = async (pg, l) => { await pg.goto(BASE + '/'); await pg.fill('#login', l); await pg.fill('#password', PASS); await pg.click('#login-submit'); await pg.waitForURL(/dzialy|witaj|magazyn/); };
+    // Po zalogowaniu czekamy na pasek użytkownika (przycisk Menu) – zmiana adresu w aplikacji jednostronicowej bywa wcześniejsza niż oczekiwanie.
+    const login = async (pg, l) => {
+      await pg.goto(BASE + '/'); await pg.waitForSelector('#login-submit');
+      await pg.fill('#login', l); await pg.fill('#password', PASS); await pg.click('#login-submit');
+      await pg.waitForSelector('#menu-toggle', { state: 'visible', timeout: 20000 });
+    };
     const p = await (await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true })).newPage();
     watch(p, 'komputer'); await login(p, 'tui.admin' + tag);
     const modal = () => p.textContent('#modal-box');
@@ -122,6 +127,8 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
       ok(!(await p.$('.mod-body > p.loading:only-child')), `${url}: strona wczytana`);
       const keys = await p.$$eval('.ws-side [data-dtab]', b => b.map(x => x.dataset.dtab));
       for (const k of keys) {
+        // pozycja wspólnego menu może prowadzić do modułu z własnymi zakładkami – wtedy wracamy na stronę wyjściową
+        if (!(await p.$(`.ws-side [data-dtab="${k}"]`))) { await p.goto(BASE + url); await p.waitForSelector('.mod-body'); await p.waitForLoadState('networkidle'); }
         await p.click(`.ws-side [data-dtab="${k}"]`); await p.waitForLoadState('networkidle');
         if (await p.isVisible('#modal:not([hidden])')) await p.keyboard.press('Escape');
         tabs++;
