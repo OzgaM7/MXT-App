@@ -228,13 +228,24 @@
     ['Communication Hub', 'dostępny', '/komunikacja'], ['Business Intelligence', 'dostępny', '/bi'], ['Karta wyników agentów', 'dostępny', '/karta-wynikow'],
     ['Automatyzacje i dzienny raport', 'dostępny', '/automatyzacje', 'automations.manage']
   ];
+  // Skrót Pulpitu właściciela w Command Center: bieżący miesiąc (bez kwot polis w przychodach) i najpilniejsze alerty.
+  function ownerPanel(o) {
+    const zl = n => money(n, 'PLN'), f = o.finance.total, urgent = o.alerts.filter(a => a.level !== 'info');
+    const t = (l, v, sub, tone) => `<div class="hk${tone ? ' hk-' + tone : ''}"><span class="hk-l">${esc(l)}</span><span class="hk-v">${esc(v)}</span>${sub ? `<span class="hk-f">${esc(sub)}</span>` : ''}</div>`;
+    return `<section class="panel cc-owner"><div class="panel-head"><h2 class="panel-title">Pulpit właściciela · ${esc(fd(o.od))} – ${esc(fd(o.do))}</h2>
+        <button type="button" class="btn btn-primary btn-sm" data-go="/pulpit-wlasciciela">Otwórz pulpit właściciela</button></div>
+      <div class="fin-kpis">${t('Przychody', zl(f.przychod), 'bez kwot polis')}${t('Koszty', zl(f.koszt))}${t('Wynik', zl(f.wynik), '', f.wynik < 0 ? 'danger' : '')}
+        ${t('Należności po terminie', zl(o.receivables.po_terminie), '', o.receivables.po_terminie ? 'warn' : '')}${t('Zlecenia po terminie', o.ops.zlecenia_po_terminie, '', o.ops.zlecenia_po_terminie ? 'danger' : '')}</div>
+      ${urgent.length ? `<ul class="alerts">${urgent.map(a => `<li class="alert alert-${esc(a.level)}"><button type="button" class="linkish" data-go="${esc(a.link)}">${esc(a.text)}</button></li>`).join('')}</ul>` : ''}</section>`;
+  }
   async function commandCenter(root, path, alive) {
     const body = frame(root, path, 'Command Center', 'Stan firmy, alerty, zadania i decyzje w jednym miejscu.',
       `<button type="button" class="btn btn-secondary" id="cc-req">Zgłoś do akceptacji</button><button type="button" class="btn btn-primary" id="cc-task">Nowe zadanie</button>`);
     const reload = () => render(path, root);
     root.querySelector('#cc-task').addEventListener('click', () => taskForm(null, reload));
     root.querySelector('#cc-req').addEventListener('click', () => requestForm(null, reload));
-    const [d] = await Promise.all([api('command-center'), meta()]);
+    const ownerOn = has('owner.dashboard') && !!ROUTES['/pulpit-wlasciciela'];
+    const [d, , own] = await Promise.all([api('command-center'), meta(), ownerOn ? api('wlasciciel').catch(() => null) : null]);
     if (!alive()) return;
     const k = d.kpi;
     const kpi = (label, value, tone, link) => `<button type="button" class="kpi kpi-${tone}"${link ? ` data-go="${link}"` : ' disabled'}><span class="kpi-v">${esc(value)}</span><span class="kpi-l">${esc(label)}</span></button>`;
@@ -253,6 +264,7 @@
         <div class="pend-r">${a.amount != null ? `<span class="pend-amt">${esc(money(a.amount, a.currency))}</span>` : ''}${chip(a.status, AP_ST[a.status])}</div></li>`).join('')
       : `<p class="empty-inline">${d.admin ? 'Brak decyzji do podjęcia.' : 'Nie masz wniosków w toku.'}</p>`;
     body.innerHTML = `
+      ${own ? ownerPanel(own) : ''}
       <section class="kpis" aria-label="Wskaźniki">${tiles}</section>
       <section class="panel"><h2 class="panel-title">Alerty</h2><ul class="alerts">${alerts}</ul></section>
       <div class="cols">
@@ -842,13 +854,17 @@
     for (const t of tabs) { const g = t[2] || ''; let G = groups.find(x => x.name === g); if (!G) groups.push(G = { name: g, items: [] }); G.items.push(t); }
     const on = t => t[0] === cur[0];
     const item = (t, cls, short) => `<button type="button" class="${cls}${on(t) ? ' on' : ''}" data-dtab="${esc(t[0])}"${on(t) ? ' aria-current="page"' : ''}>${icon(t[0])}<span class="ws-l">${esc(short ? t[3] || t[1] : t[1])}</span><span class="ws-badge" data-badge="${esc(t[0])}" hidden></span></button>`;
-    const navList = cls => groups.map(g => `<div class="ws-group">${g.name ? `<p class="ws-gname">${esc(g.name)}</p>` : ''}${g.items.map(t => item(t, cls)).join('')}</div>`).join('');
+    // W każdym dziale: skrót do Pulpitu właściciela (tylko role z dostępem do pulpitu).
+    const ownerLink = isDept && has('owner.dashboard') && ROUTES['/pulpit-wlasciciela']
+      ? `<div class="ws-group ws-owner"><button type="button" class="ws-i" data-go="/pulpit-wlasciciela">${icon('wyniki')}<span class="ws-l">Pulpit właściciela</span></button></div>` : '';
+    const navList = cls => ownerLink + groups.map(g => `<div class="ws-group">${g.name ? `<p class="ws-gname">${esc(g.name)}</p>` : ''}${g.items.map(t => item(t, cls)).join('')}</div>`).join('');
     const logo = dep.logo ? `<img class="ws-logo" src="${esc(dep.logo.src)}" width="${dep.logo.w}" height="${dep.logo.h}" alt="${esc(dep.logo.alt)}">` : '';
     const switcher = `<div class="ws-switch"><button type="button" class="ws-switch-b" data-pop aria-haspopup="true" aria-expanded="false">
         <span class="ws-switch-t"><span class="ws-k">${isDept ? 'Dział' : 'Moduł'}</span><span class="ws-n">${esc(dep.name)}</span></span>${icon('chev', 'ic ic-sm')}</button>
       <div class="pop ws-switch-menu" hidden>${deps.map(d => `<button type="button" class="pop-i${d.slug === slug ? ' on' : ''}" data-go="/dzial/${esc(d.slug)}"${d.slug === slug ? ' aria-current="true"' : ''}>${esc(d.name)}</button>`).join('')}
         <button type="button" class="pop-i pop-all" data-go="/dzialy">${icon('all', 'ic ic-sm')}Wszystkie działy</button>
-        ${allowed(me(), ROUTES['/command-center']) ? `<button type="button" class="pop-i" data-go="${has('owner.dashboard') && ROUTES['/pulpit-wlasciciela'] ? '/pulpit-wlasciciela' : '/command-center'}">${icon('pulpit', 'ic ic-sm')}Moduły firmy (Business OS)</button>` : ''}</div></div>`;
+        ${has('owner.dashboard') && ROUTES['/pulpit-wlasciciela'] ? `<button type="button" class="pop-i" data-go="/pulpit-wlasciciela">${icon('wyniki', 'ic ic-sm')}Pulpit właściciela</button>` : ''}
+        ${allowed(me(), ROUTES['/command-center']) ? `<button type="button" class="pop-i" data-go="/command-center">${icon('pulpit', 'ic ic-sm')}Command Center i moduły firmy</button>` : ''}</div></div>`;
     // Menu dolne (telefon): do 5 pozycji; przy większej liczbie 4 pierwsze + „Więcej” z pełną listą.
     const many = tabs.length > 5, first = many ? tabs.slice(0, 4) : tabs, moreOn = many && !first.some(on);
     root.innerHTML = `<div class="ws" data-dept="${esc(slug)}">
