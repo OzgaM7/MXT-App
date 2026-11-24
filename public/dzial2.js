@@ -1,25 +1,37 @@
 'use strict';
-// Dział 2 – Sprzedaż części i eksport: TYLKO 4 funkcje – oferty, kalkulacje wielowalutowe, dokumenty eksportowe i celne,
-// historia sprzedaży i reklamacji.
+// Dział 2 – Sprzedaż części samochodowych: zamówienia klientów (rezerwacja, WZ, faktura, zapłata, zwroty, reklamacje),
+// produkty i ceny, analityka (moduł MXT_CZESCI) oraz dotychczasowe: oferty, kalkulacje wielowalutowe, dokumenty eksportowe
+// i celne, historia sprzedaży i reklamacji.
 (() => {
   const U = () => window.MXT_UI, B = () => window.MXT_BIZ;
   const esc = v => U().esc(v), api = (...a) => U().api(...a), toast = m => U().toast(m), chip = (a, b) => U().chip(a, b);
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a), money = (a, c) => U().money(a, c);
   const pln = n => B().pln(n), table = (...a) => B().table(...a), opts = (...a) => B().opts(...a);
   const DEP = 'sprzedaz-czesci-i-eksport', PATH = '/dzial/' + DEP;
-  const TABS = [['oferty', 'Oferty'], ['kalkulacje', 'Kalkulacje wielowalutowe', '', 'Kalkulacje'], ['eksport', 'Dokumenty eksportowe i celne', '', 'Eksport'], ['historia', 'Historia sprzedaży i reklamacji', '', 'Historia']];
+  const TABS = [['zamowienia', 'Zamówienia', 'Sprzedaż', 'Zamówienia'], ['produkty', 'Produkty i ceny', 'Sprzedaż', 'Produkty'], ['oferty', 'Oferty', 'Sprzedaż'],
+    ['analityka', 'Analityka', 'Analizy', 'Analityka'], ['historia', 'Historia sprzedaży i reklamacji', 'Analizy', 'Historia'],
+    ['kalkulacje', 'Kalkulacje wielowalutowe', 'Eksport', 'Kalkulacje'], ['eksport', 'Dokumenty eksportowe i celne', 'Eksport', 'Eksport']];
+  const C = () => window.MXT_CZESCI;
+  const zamowienia = (...a) => C().zamowienia(...a), produkty = (...a) => C().produkty(...a), analityka = (...a) => C().analityka(...a);
   const EXP = { faktura_eksportowa: 'Faktura eksportowa (commercial invoice)', specyfikacja_wysylkowa: 'Specyfikacja wysyłkowa (packing list)', dane_celne: 'Dane do zgłoszenia celnego' };
   const INCO = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
   const SALE_ST = { w_realizacji: 'W realizacji', zrealizowana: 'Zrealizowana', anulowana: 'Anulowana' };
-  let tab = 'oferty', lastCalc = null;
+  let tab = 'zamowienia', lastCalc = null;
 
   async function page(root, path, alive) {
-    const body = U().deptFrame(root, 'Sprzedaż części samochodowych', TABS, tab, t => { tab = t; reload(); });
+    const sp = new URLSearchParams(location.search);
+    // Zamówienia, produkty i analityka wymagają uprawnienia sprzedaży części (backend i tak je sprawdza).
+    const tabs = TABS.filter(t => !['zamowienia', 'produkty', 'analityka'].includes(t[0]) || U().has('parts.sell'));
+    if (sp.get('tab') && tabs.some(t => t[0] === sp.get('tab'))) tab = sp.get('tab');
+    if (!tabs.some(t => t[0] === tab)) tab = tabs[0][0];
+    const body = U().deptFrame(root, 'Sprzedaż części samochodowych', tabs, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
-    await ({ oferty, kalkulacje, eksport, historia }[tab])(panel, reload, alive);
+    await ({ zamowienia, produkty, analityka, oferty, kalkulacje, eksport, historia }[tab])(panel, reload, alive);
     if (!alive()) return;
-    body.replaceChildren(panel);
+    body.replaceChildren(panel); U().wsHoist(root);
+    if (location.search) history.replaceState({}, '', location.pathname);
+    if (sp.get('z')) C().orderCard(sp.get('z'), reload);
     if (tab === 'oferty') await B().agentsStrip(panel, DEP);
   }
 

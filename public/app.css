@@ -1164,3 +1164,44 @@ div.kpi { cursor: default; }
 .pf-res { display: flex; flex-direction: column; gap: 2px; margin: -4px 0 8px; }
 .pf-res .pop-i { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); }
 .pf-cust { margin-bottom: 6px; }
+
+/* ---------- ERP: finanse firmy, pulpit właściciela, sprzedaż części ---------- */
+.fin-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin: 4px 0 14px; }
+.fin-kpis .hk-v { font-size: 22px; }
+.fin-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--surface); border: 1px dashed var(--line); font-size: 14px; }
+.fin-note .ic { flex: none; margin-top: 2px; color: var(--accent); }
+.per-bar { flex-wrap: wrap; align-items: center; gap: 8px; }
+.per-bar .seg { margin-right: 4px; }
+.per-f { display: inline-flex; align-items: center; gap: 6px; }
+.per-f input { width: 170px; max-width: 100%; }
+.tr-total td { border-top: 2px solid var(--line); }
+.ow-alerts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ow-alerts li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.ow-alerts li:last-child { border-bottom: 0; }
+.ow-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 8px; }
+.ow-stat { font: inherit; width: 100%; min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.ow-stat:hover { border-color: var(--accent); }
+.ow-stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.ow-stat.ow-warn { background: var(--warn-soft); border-color: transparent; }
+.ow-stat.ow-warn b { color: var(--warn); }
+.ow-stat.ow-danger { background: var(--danger-soft); border-color: transparent; }
+.ow-stat.ow-danger b { color: var(--danger); }
+.int-list { list-style: none; margin: 0 0 10px; padding: 0; }
+.int-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.int-list li p { margin: 2px 0 0; }
+.int-list .chip { flex: none; }
+.cf-bars { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+.cf-bars .hb-bar { height: 7px; }
+.oc-total { text-align: right; font-size: 16px; margin: 6px 0 10px; }
+@media (max-width: 640px) {
+  .ow-alerts li { grid-template-columns: minmax(0, 1fr) auto; }
+  .ow-alerts li .chip { grid-column: 1 / -1; justify-self: start; }
+  .fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fin-kpis .hk-v { font-size: 18px; }
+  .per-f { flex: 1 1 140px; min-width: 0; }
+  .per-f input { width: auto; flex: 1; min-width: 0; }
+  .per-bar .seg { width: 100%; }
+  .table-cards tfoot { display: block; }
+  .table-cards .tr-total { background: var(--bg); }
+  .table-cards .tr-total td { border-top: 0; }
+}

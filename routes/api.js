@@ -292,6 +292,9 @@ r.use('/d1', require('./erp/zlecenia'));
 r.use('/magazyn', require('./erp/magazyn'));
 r.use('/', require('./erp/pracownicy'));
 r.use('/', require('./erp/polisy'));
+r.use('/', require('./erp/czesci'));
+r.use('/', require('./erp/finanse').router);
+r.use('/', require('./erp/wlasciciel'));
 
 // ---------- etap 3: działy, CRM, finanse, Knowledge Base, platforma szkoleniowa ----------
 r.use('/d1', require('./dzial1'));

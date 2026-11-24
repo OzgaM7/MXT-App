@@ -12,7 +12,8 @@
   const WK = { glowny: 'Główny', samochod: 'Samochód serwisowy', punkt: 'Punkt sprzedaży', inny: 'Inny' };
   const DEPT = { '': 'Wspólne', 'podzielniki-i-montaze': 'Ciepłomierze i podzielniki', 'sprzedaz-czesci-i-eksport': 'Sprzedaż części' };
   const VEH = { '': '–', osobowe: 'Osobowe', ciezarowe: 'Ciężarowe', uniwersalne: 'Uniwersalne' };
-  const TABS = [['stany', 'Stany i pozycje', 'Magazyn', 'Stany'], ['dokumenty', 'Dokumenty', 'Magazyn'], ['dostawcy', 'Dostawcy', 'Zakupy'], ['magazyny', 'Magazyny', 'Ustawienia']];
+  const TABS = [['stany', 'Stany i pozycje', 'Magazyn', 'Stany'], ['dokumenty', 'Dokumenty', 'Magazyn'], ['zakupy', 'Zamówienia zakupu', 'Zakupy', 'Zakupy'], ['dostawcy', 'Dostawcy', 'Zakupy'], ['magazyny', 'Magazyny', 'Ustawienia']];
+  const zakupy = (...a) => window.MXT_CZESCI.zakupy(...a);
   const td = (label, html, cls) => `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ''}>${html}</td>`;
   const ctable = (head, rows, empty) => rows.length ? `<div class="table-wrap"><table class="table table-cards"><thead><tr>${head.map(h => `<th${h.num ? ' class="num"' : ''}>${esc(h.t || h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<p class="empty-inline">${esc(empty)}</p>`;
   let tab = 'stany';
@@ -24,11 +25,12 @@
     const body = U().deptFrame(root, 'Magazyn', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     const panel = document.createElement('div'); panel.className = 'mod-body';
-    await ({ stany, dokumenty, dostawcy, magazyny }[tab])(panel, reload, alive);
+    await ({ stany, dokumenty, zakupy, dostawcy, magazyny }[tab])(panel, reload, alive);
     if (!alive()) return;
     body.replaceChildren(panel); U().wsHoist(root);
     if (location.search) history.replaceState({}, '', location.pathname);
     if (sp.get('p')) itemCard(sp.get('p'), reload);
+    if (sp.get('po')) window.MXT_CZESCI.poCard(sp.get('po'), reload);
     api('magazyn/pozycje?ponizej=1').then(l => U().wsBadge(root, 'stany', l.length, 'warn')).catch(() => {});
   }
 
