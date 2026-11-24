@@ -42,24 +42,37 @@
   const MENU_EXTRA = [];
   function menu(u) {
     const items = (u.permissions || []).includes('departments.view') ? [{ label: 'Wybór działu', path: '/dzialy' }] : [];
-    for (const p of TABS) if (allowed(u, ROUTES[p])) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
+    const office = (u.permissions || []).includes('departments.view');
+    for (const p of TABS) if (allowed(u, ROUTES[p]) && !(office && FIELD.includes(p))) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
     for (const p of MENU_EXTRA) if (allowed(u, ROUTES[p]) && !TABS.includes(p)) items.push({ label: ROUTES[p].title, path: p, admin: ROUTES[p].admin });
     items.push({ label: 'Zmień hasło', path: '/zmiana-hasla' });
     return items;
   }
 
+  // Grupy modułów MXT Business OS w menu bocznym. Ekrany pracowników terenowych (odczyty, moje serwisy, moje montaże)
+  // pokazują się tylko kontom bez dostępu do działów – biuro ma te funkcje w dziale Ciepłomierze i podzielniki.
+  const GROUP = { '/command-center': 'Zarządzanie', '/zadania': 'Zarządzanie', '/wnioski': 'Zarządzanie', '/akceptacje': 'Zarządzanie',
+    '/crm': 'Firma', '/finanse': 'Firma', '/wiedza': 'Firma', '/komunikacja': 'Firma', '/bi': 'Firma',
+    '/ai-board': 'Agenci AI', '/ai-workforce': 'Agenci AI', '/karta-wynikow': 'Agenci AI', '/ustawienia-ai': 'Agenci AI', '/automatyzacje': 'Agenci AI',
+    '/bezpieczenstwo': 'Administracja', '/konta': 'Administracja' };
+  const FIELD = ['/odczyty', '/moje-serwisy', '/moje-montaze'];
+  function navTabs(u) {
+    const office = (u.permissions || []).includes('departments.view');
+    const list = TABS.filter(p => ROUTES[p] && allowed(u, ROUTES[p]) && !(office && FIELD.includes(p)));
+    const order = ['', 'Zarządzanie', 'Firma', 'Agenci AI', 'Administracja'];
+    return list.map(p => [p, ROUTES[p].title, GROUP[p] || '']).sort((a, b) => order.indexOf(a[2]) - order.indexOf(b[2]));
+  }
+  // Ramka modułów MXT Business OS – ten sam układ co działy i moduły ERP (menu boczne, ścieżka, nagłówek, menu dolne na telefonie).
   function frame(root, path, title, lead, actions) {
-    const tabs = TABS.filter(p => allowed(me(), ROUTES[p])).map(p =>
-      `<button type="button" class="tab${p === path ? ' tab-on' : ''}" data-go="${p}"${p === path ? ' aria-current="page"' : ''}>${esc(ROUTES[p].title)}</button>`).join('');
-    root.innerHTML = `
-      <nav class="modnav" aria-label="Moduły">${tabs}</nav>
-      <header class="mod-head">
-        <div class="mod-head-text"><p class="eyebrow">MXT Business OS</p><h1 class="mod-title">${esc(title)}</h1>${lead ? `<p class="mod-lead">${esc(lead)}</p>` : ''}</div>
-        <div class="mod-actions">${actions || ''}</div>
-      </header>
-      <div class="mod-body" id="mod-body"><p class="muted loading">Wczytywanie…</p></div>`;
-    root.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
-    return root.querySelector('#mod-body');
+    document.body.classList.add('ws-mode');
+    const scr = root.closest('.screen'); if (scr) scr.classList.add('screen-ws');
+    const tabs = navTabs(me());
+    if (!tabs.some(t => t[0] === path) && ROUTES[path]) tabs.unshift([path, ROUTES[path].title, '']);
+    const body = deptFrame(root, 'MXT Business OS', tabs, path, p => go(p));
+    const h = root.querySelector('.ws-title'); if (h) h.textContent = title;
+    const sub = root.querySelector('.ws-sub'); if (sub && lead) { sub.textContent = lead; sub.hidden = false; }
+    const act = root.querySelector('.ws-actions'); if (act) act.innerHTML = actions || '';
+    return body;
   }
 
   let renderSeq = 0;
@@ -801,13 +814,19 @@
     analityka: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', zakupy: '<path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/>',
     wyniki: '<path d="M3 20h18M5 16l4-5 4 3 6-8"/>', naleznosci: '<path d="M12 3v14M7 12l5 5 5-5"/><path d="M4 21h16"/>',
     zobowiazania: '<path d="M12 17V3M7 8l5-5 5 5"/><path d="M4 21h16"/>', przeplywy: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+    zatwierdz: '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>', wiedza: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7"/>',
+    ai: '<rect x="5" y="7" width="14" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>',
     wiecej: '<path d="M4 6h16M4 12h16M4 18h16"/>', dot: '<circle cx="12" cy="12" r="3"/>',
     chev: '<path d="M6 9l6 6 6-6"/>', left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     up: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>', down: '<path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', ok: '<path d="M5 12l5 5L20 7"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', views: '<path d="M4 6h16M4 12h10M4 18h6"/>', all: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
   };
-  const icon = (k, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC.dot}</svg>`;
+  const IC_PATH = { '/command-center': 'pulpit', '/zadania': 'ok', '/wnioski': 'dokumenty', '/akceptacje': 'zatwierdz', '/crm': 'klienci', '/finanse': 'wyniki',
+    '/wiedza': 'wiedza', '/komunikacja': 'rozmowy', '/bi': 'analityka', '/ai-board': 'ai', '/ai-workforce': 'ai', '/karta-wynikow': 'rentownosc',
+    '/ustawienia-ai': 'admin', '/automatyzacje': 'przeplywy', '/bezpieczenstwo': 'polisy', '/konta': 'kartoteka', '/odczyty': 'odczyty',
+    '/moje-serwisy': 'serwisy', '/moje-montaze': 'harmonogram' };
+  const icon = (k, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC[IC_PATH[k]] || IC.dot}</svg>`;
   function deptFrame(root, title, tabs, active, onTab) {
     const slug = (location.pathname.match(/^\/dzial\/([a-z-]+)/) || [])[1] || '';
     const deps = window.MXT.departments ? window.MXT.departments() : [];
