@@ -4,10 +4,10 @@
 const express = require('express');
 const { pool } = require('../db');
 const { audit } = require('../lib/audit');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, can } = require('../lib/rbac');
 const docs = require('../lib/docs');
 const pdf = require('../lib/pdf');
-const { wrap, idParam, V, bad, patchSql, sendPdf } = require('./_util');
+const { wrap, idParam, V, bad, patchSql, sendPdf, checkFresh, assertFresh, listLimit } = require('./_util');
 const { notify } = require('../lib/notify');
 const { usersOfCrew } = require('../lib/scope');
 
@@ -20,8 +20,10 @@ const INST_ST = ['zaplanowany', 'w_toku', 'wykonany', 'odebrany', 'anulowany'];
 
 // rentowność: przychody − koszty (PLN) z Finance Intelligence
 const { PROFIT } = require('../lib/erp/profit');   // przychody z finansów, koszty z księgi kosztów (materiały, robocizna)
+const { plToday } = require('../lib/dzis');
 
 // ---------- budynki ----------
+const noMoney = ({ przychod, koszt, ...rest }) => rest;   // bez finance.view: bez przychodów i kosztów
 function buildingFields(b, partial) {
   const o = {}, set = (k, fn) => { if (!partial || b[k] !== undefined) o[k] = fn(b[k]); };
   set('customer_id', v => V.uuid(v, 'Wspólnota / spółdzielnia'));
@@ -35,15 +37,29 @@ function buildingFields(b, partial) {
 r.get('/budynki', use, wrap(async (req, res) => {
   const p = [], w = [];
   if (req.query.q) { p.push('%' + String(req.query.q).slice(0, 80) + '%'); w.push(`(x.name ILIKE $1 OR x.address ILIKE $1 OR x.city ILIKE $1 OR c.name ILIKE $1)`); }
-  const q = await pool.query(`SELECT x.*, c.name AS customer_name,
+  w.push(req.query.archiwum === '1' ? 'x.archived_at IS NOT NULL' : 'x.archived_at IS NULL');   // archiwum osobno, domyślnie aktywne
+  const q = await pool.query(`SELECT count(*) OVER()::int AS total_count, x.*, c.name AS customer_name,
       (SELECT count(*)::int FROM devices d WHERE d.building_id = x.id AND d.status = 'zamontowane') AS devices,
       (SELECT count(*)::int FROM installations i WHERE i.building_id = x.id) AS installations,
       (SELECT count(*)::int FROM complaints k WHERE k.building_id = x.id AND k.status NOT IN ('rozwiazana','odrzucona')) AS open_complaints, ${PROFIT('building_id')}
-    FROM buildings x LEFT JOIN customers c ON c.id = x.customer_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY x.city, x.name LIMIT 500`, p);
-  res.json(q.rows);
+    FROM buildings x LEFT JOIN customers c ON c.id = x.customer_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY x.city, x.name LIMIT ${listLimit(req, 500)}`, p);
+  res.json(can(req.user, 'finance.view') ? q.rows : q.rows.map(noMoney));
 }));
+// Ten sam adres (bez wielkości liter, spacji i znaków interpunkcyjnych) w tym samym mieście – prawdopodobny duplikat.
+const normAddr = `regexp_replace(lower(coalesce(%s, '')), '[^[:alnum:]]', '', 'g')`;
+async function findBuildingDuplicate(o, exceptId) {
+  const q = await pool.query(`SELECT id, name, address, city, archived_at FROM buildings WHERE ($3::uuid IS NULL OR id <> $3)
+      AND ${normAddr.replace('%s', 'address')} = ${normAddr.replace('%s', '$1')} AND ${normAddr.replace('%s', 'city')} = ${normAddr.replace('%s', '$2')} LIMIT 1`,
+    [o.address, o.city || '', exceptId || null]);
+  return q.rows[0] || null;
+}
 r.post('/budynki', use, wrap(async (req, res) => {
   const o = buildingFields(req.body || {}, false);
+  if (!(req.body || {}).potwierdz_duplikat) {
+    const d = await findBuildingDuplicate(o);
+    if (d) return res.status(409).json({ error: `Budynek pod tym adresem już jest: „${d.name}”, ${d.address}${d.city ? ', ' + d.city : ''}${d.archived_at ? ' (w archiwum)' : ''}. Otwórz istniejący albo potwierdź dodanie nowego (np. osobna klatka).`,
+      duplikat: true, istniejacy: { id: d.id, name: d.name, archiwum: !!d.archived_at } });
+  }
   const q = await pool.query(`INSERT INTO buildings (customer_id, name, address, city, postal_code, units_count, heating_type, notes, created_by)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [o.customer_id, o.name, o.address, o.city, o.postal_code, o.units_count, o.heating_type, o.notes, req.user.id]);
   if (o.customer_id) await pool.query(`UPDATE customers SET departments = array_append(departments, $2) WHERE id = $1 AND NOT ($2 = ANY(departments))`, [o.customer_id, DEP]);
@@ -51,11 +67,46 @@ r.post('/budynki', use, wrap(async (req, res) => {
   res.status(201).json(q.rows[0]);
 }));
 r.patch('/budynki/:id', idParam, use, wrap(async (req, res) => {
+  await assertFresh(pool, 'buildings', req.params.id, (req.body || {}).updated_at);
   const { sql, params } = patchSql('buildings', req.params.id, buildingFields(req.body || {}, true));
   const q = await pool.query(sql, params);
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono budynku.');
   await audit(req, 'budynek.zmiana', { resource: 'buildings', resourceId: req.params.id });
   res.json(q.rows[0]);
+}));
+// Usuwanie budynku: tylko bez historii (montaże, urządzenia, lokale, serwisy, odczyty, reklamacje, finanse). Z historią – archiwum.
+const BREL = [['installations', 'montaże'], ['devices', 'urządzenia'], ['units', 'lokale'], ['service_orders', 'zlecenia serwisowe'], ['reading_schedules', 'harmonogramy odczytów'],
+  ['complaints', 'reklamacje'], ['finance', 'wpisy finansowe']];
+async function buildingRelations(c, id) {
+  const r = (await c.query(`SELECT ${BREL.map(([t], i) => `(SELECT count(*)::int FROM ${t} WHERE building_id = $1) AS r${i}`).join(', ')}`, [id])).rows[0];
+  return BREL.map(([, l], i) => [l, r['r' + i]]).filter(([, n]) => n > 0);
+}
+r.get('/budynki/:id/powiazania', idParam, use, wrap(async (req, res) => res.json(await buildingRelations(pool, req.params.id))));
+r.delete('/budynki/:id', idParam, use, wrap(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const b = (await client.query('SELECT id, name, address FROM buildings WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!b) throw bad(404, 'Nie znaleziono budynku.');
+    const rel = await buildingRelations(client, b.id);
+    if (rel.length) throw bad(409, `Budynek ma historię (${rel.map(([l, n]) => `${l}: ${n}`).join(', ')}) – nie można go usunąć. Przenieś go do archiwum.`);
+    await client.query('DELETE FROM buildings WHERE id = $1', [b.id]);
+    await audit(req, 'budynek.usuniecie', { resource: 'buildings', resourceId: b.id, details: { nazwa: b.name, adres: b.address }, client });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+}));
+r.post('/budynki/:id/archiwizuj', idParam, use, wrap(async (req, res) => {
+  const q = await pool.query(`UPDATE buildings SET archived_at = now(), archived_by = $2, updated_at = now() WHERE id = $1 AND archived_at IS NULL RETURNING name`, [req.params.id, req.user.id]);
+  if (!q.rows[0]) throw bad(409, 'Budynek nie istnieje albo jest już w archiwum.');
+  await audit(req, 'budynek.archiwizacja', { resource: 'buildings', resourceId: req.params.id, details: { nazwa: q.rows[0].name } });
+  res.json({ ok: true });
+}));
+r.post('/budynki/:id/przywroc', idParam, use, wrap(async (req, res) => {
+  const q = await pool.query(`UPDATE buildings SET archived_at = NULL, archived_by = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL RETURNING id`, [req.params.id]);
+  if (!q.rows[0]) throw bad(409, 'Budynek nie jest w archiwum.');
+  await audit(req, 'budynek.przywrocenie', { resource: 'buildings', resourceId: req.params.id });
+  res.json({ ok: true });
 }));
 r.get('/budynki/:id', idParam, use, wrap(async (req, res) => {
   const id = req.params.id;
@@ -67,7 +118,8 @@ r.get('/budynki/:id', idParam, use, wrap(async (req, res) => {
     pool.query(`SELECT id, number, title, status, reported_at FROM complaints WHERE building_id = $1 ORDER BY reported_at DESC`, [id]),
     pool.query(`SELECT id, kind, category, description, amount_pln::float AS amount_pln, entry_date, invoice_no, paid_at FROM finance WHERE building_id = $1 ORDER BY entry_date DESC`, [id])
   ]);
-  res.json({ ...b, devices: d.rows, installations: i.rows, complaints: k.rows, finance: f.rows });
+  const finOk = can(req.user, 'finance.view');   // przychody, koszty i faktury budynku – tylko z dostępem do finansów
+  res.json({ ...(finOk ? b : noMoney(b)), devices: d.rows, installations: i.rows, complaints: k.rows, finance: finOk ? f.rows : [] });
 }));
 
 // ---------- urządzenia ----------
@@ -183,7 +235,7 @@ r.get('/montaze', use, wrap(async (req, res) => {
   if (req.query.crew_id) { p.push(V.uuid(req.query.crew_id)); w.push(`x.crew_id = $${p.length}`); }
   if (INST_ST.includes(req.query.status)) { p.push(req.query.status); w.push(`x.status = $${p.length}`); }
   const q = await pool.query(INST_SELECT + (w.length ? ' WHERE ' + w.join(' AND ') : '') + ' ORDER BY x.planned_date, x.number LIMIT 500', p);
-  res.json(q.rows);
+  res.json(can(req.user, 'finance.view') ? q.rows : q.rows.map(noMoney));
 }));
 function materials(v) {
   return JSON.stringify((Array.isArray(v) ? v : []).slice(0, 100).map(m => ({ nazwa: V.str(m.nazwa, 200), ilosc: V.num(m.ilosc, 0, 1e6, 'Ilość materiału'), jm: V.str(m.jm, 10) || 'szt.' })).filter(m => m.nazwa));
@@ -215,7 +267,7 @@ r.get('/montaze/:id', idParam, use, wrap(async (req, res) => {
   if (!x) throw bad(404, 'Nie znaleziono montażu.');
   const d = await pool.query('SELECT * FROM devices WHERE installation_id = $1 ORDER BY location, serial_no', [x.id]);
   const inst = x.crew_id ? (await pool.query('SELECT name, phone FROM installers WHERE crew_id = $1 AND is_active ORDER BY name', [x.crew_id])).rows : [];
-  res.json({ ...x, devices: d.rows, installers: inst });
+  res.json({ ...(can(req.user, 'finance.view') ? x : noMoney(x)), devices: d.rows, installers: inst });
 }));
 r.patch('/montaze/:id', idParam, use, wrap(async (req, res) => {
   const b = req.body || {}, f = {};
@@ -233,6 +285,7 @@ r.patch('/montaze/:id', idParam, use, wrap(async (req, res) => {
   try {
     await client.query('BEGIN');
     const old = (await client.query('SELECT * FROM installations WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (old) checkFresh(old.updated_at, b.updated_at);
     if (!old) throw bad(404, 'Nie znaleziono montażu.');
     const x = (await client.query(sql, params)).rows[0];
     await audit(req, 'montaz.zmiana', { resource: 'installations', resourceId: req.params.id, details: f, client });
@@ -281,7 +334,7 @@ r.post('/montaze/:id/protokol', idParam, use, wrap(async (req, res) => {
     let docId = x.protocol_document_id, number;
     if (!docId) { number = await docs.nextNumber(client, 'PO'); docId = (await docs.createDocument(client, { kind: 'protokol', title: `Protokół odbioru ${number}`, department_id: DEP, related_type: 'installation', related_id: x.id, userId: req.user.id })).id; }
     else number = (await client.query('SELECT title FROM documents WHERE id = $1', [docId])).rows[0].title.replace('Protokół odbioru ', '');
-    const data = { number, date: new Date().toISOString().slice(0, 10), customer: x.customer_name || '–', building: x.building_name, address: `${x.address}${x.city ? ', ' + x.city : ''}`,
+    const data = { number, date: plToday(), customer: x.customer_name || '–', building: x.building_name, address: `${x.address}${x.city ? ', ' + x.city : ''}`,
       installation: x.number, crew: x.crew_name || '–', planned_date: x.planned_date, planned_end: x.planned_end, scope: x.scope, devices, materials: x.materials, notes: V.str(b.notes, 2000) || x.notes, accepted_by: accepted };
     const file = await pdf.protocol(data);
     const v = await docs.addVersion(client, docId, { content: data, file, fileName: number.replace(/\//g, '-') + '.pdf', mime: 'application/pdf', note: 'Protokół odbioru', userId: req.user.id });
@@ -334,7 +387,7 @@ r.patch('/kontrakty/:id', idParam, use, wrap(async (req, res) => {
 }));
 
 // ---------- rentowność ----------
-r.get('/rentownosc', use, wrap(async (req, res) => {
+r.get('/rentownosc', requirePerm('finance.view'), wrap(async (req, res) => {
   const [b, i, k] = await Promise.all([
     pool.query(`SELECT x.id, x.name, x.address, x.city, x.units_count, ${PROFIT('building_id')} FROM buildings x ORDER BY x.name`),
     pool.query(`SELECT x.id, x.number, x.planned_date, x.status, b.name AS building_name, ${PROFIT('installation_id')} FROM installations x JOIN buildings b ON b.id = x.building_id ORDER BY x.planned_date DESC LIMIT 200`),

@@ -14,6 +14,7 @@ const secrets = require('../lib/secrets');
 const monitoring = require('../lib/monitoring');
 const catalog = require('../lib/ai/catalog');
 const { wrap, idParam, V, bad, UUID } = require('./_util');
+const { plToday } = require('../lib/dzis');
 
 const r = express.Router();
 const admin = requirePerm('automations.manage');
@@ -54,7 +55,7 @@ r.put('/raport-dzienny', admin, wrap(async (req, res) => {
   res.json(v);
 }));
 r.post('/raport-dzienny/uruchom', admin, wrap(async (req, res) => {
-  const id = await jobs.enqueue('raport_dzienny', { date: new Date().toISOString().slice(0, 10), trigger: 'reczne', user_id: req.user.id }, { maxAttempts: 1 });
+  const id = await jobs.enqueue('raport_dzienny', { date: plToday(), trigger: 'reczne', user_id: req.user.id }, { maxAttempts: 1 });
   await audit(req, 'automatyzacje.raport_dzienny_reczny', { resource: 'jobs', resourceId: id });
   const j = await jobs.runNow(id);
   if (j.status === 'blad') throw bad(409, 'Raport nie powstał: ' + j.last_error);

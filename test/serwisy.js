@@ -158,7 +158,7 @@ const day = n => { const d = new Date(today() + 'T12:00:00Z'); d.setUTCDate(d.ge
     ok((await notes(s1.id, 'serwis.do_poprawy')).length === 1, 'serwisant wie o poprawce');
 
     // ---------- zlecenie z reklamacji ----------
-    const bld = (await call('d1/budynki', { name: T + ' Blok', address: 'ul. Klonowa 9', city: 'Nowa Sól' }, A)).j;
+    const bld = (await call('d1/budynki', { name: T + ' Blok', address: 'ul. Klonowa 9', city: 'Nowa Sól', potwierdz_duplikat: true }, A)).j;
     const cpl = (await call('reklamacje', { department_id: 'podzielniki-i-montaze', title: T + ' Zawyżone odczyty', building_id: bld.id }, A)).j;
     ok((await call('serwisy/reklamacje', null, A)).j.some(k => k.id === cpl.id), 'otwarte reklamacje do powiązania');
     r = await call('serwisy', { complaint_id: cpl.id, description: 'Sprawdzić podzielniki w lokalu 4', unit: '4' }, A);

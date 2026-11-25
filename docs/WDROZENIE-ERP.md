@@ -4,6 +4,21 @@ Wdrożenie wykonujemy dopiero po akceptacji właściciela. Produkcja (Render) bu
 przy starcie kontenera najpierw działają migracje (`node scripts/migrate.js`), potem serwer. Jeśli migracja się nie uda,
 nowa wersja nie wstaje, a Render zostawia działającą poprzednią.
 
+## Wdrożenie poprawek po audycie (mxt-v26, migracja `021`)
+
+- **Baza:** `021_audyt_poprawki.sql` – tylko dodaje: kolumny archiwum/anonimizacji klientów, archiwum budynków, anulowania
+  polis (`019`: kolumny przed widokiem `policies_v`, widok tworzony od nowa – widok nie przechowuje danych) i dokumentów
+  magazynowych, rozszerzona lista zdarzeń polis, ~40 indeksów kluczy obcych (Rentowność przy 3000 budynków: 14,7 s → 0,46 s).
+  Żadne istniejące dane nie są zmieniane ani usuwane. Migracja sprawdzona dwukrotnie na pustej bazie i na bazie testowej.
+- **Wycofanie:** poprzednia wersja działa na bazie po `021` (dodatkowe kolumny i indeksy jej nie przeszkadzają). Jeśli
+  w nowej wersji anulowano polisę (zdarzenie „anulowanie”), migracja `019` poprzedniej wersji nie odtworzy starszej listy
+  zdarzeń – nowa wersja wtedy nie wstanie, a Render zostawi działającą poprzednią (bez utraty danych).
+- **Aplikacja na telefonie:** nowa wersja plików `mxt-v26` pobiera się sama.
+- **Strefa czasowa:** każde połączenie z bazą ustawia strefę `Europe/Warsaw` (parametr startowy połączenia), a daty domyślne
+  w kodzie liczone są wg czasu polskiego (`lib/dzis.js`) – dokumenty wystawione tuż po północy nie dostają już wczorajszej daty.
+  Za pulą połączeń, która nie przyjmuje parametrów startowych (np. pgbouncer w trybie transakcji): `DB_TIMEZONE=` (puste)
+  i jednorazowo `ALTER DATABASE … SET timezone = 'Europe/Warsaw'`. Render (bezpośrednie połączenie) – bez zmian konfiguracji.
+
 ## Co zmienia wdrożenie
 
 - **Baza:** migracje `016`–`020` – tylko dodają (nowe tabele, kolumny, indeksy, rozszerzone listy dozwolonych wartości).

@@ -10,7 +10,7 @@ const ok = (c, m) => { assert.ok(c, m); passed++; };
 const eq = (a, b, m) => { assert.equal(a, b, m); passed++; };
 
 (async () => {
-  const PORT = 6500 + Math.floor(Math.random() * 200), base = 'http://localhost:' + PORT;
+  const PORT = require('./_setup').testPort(6500, 200), base = 'http://localhost:' + PORT;
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, WORKERS: '0' }, stdio: ['ignore', 'ignore', 'inherit'] });
   const call = async (p, body, cookie, method) => {
     const r = await fetch(base + '/api/' + p, { method: method || (body ? 'POST' : 'GET'),

@@ -5,7 +5,7 @@ const { pool } = require('../../db');
 const { audit } = require('../../lib/audit');
 const { can, requirePerm } = require('../../lib/rbac');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, listLimit, withTotal } = require('../_util');
 
 const r = express.Router();
 const anyOf = perms => async (req, res, next) => perms.some(p => can(req.user, p)) ? next() : requirePerm(perms[0])(req, res, next);
@@ -71,7 +71,7 @@ r.get('/pozycje', view, wrap(async (req, res) => {
   if (DEPTS.includes(req.query.dzial)) { p.push(req.query.dzial); w.push(`(i.department_id = $${p.length} OR i.department_id IS NULL)`); }
   if (req.query.aktywne !== '0') w.push('i.is_active');
   if (req.query.ponizej === '1') w.push('i.min_qty > 0 AND coalesce(t.qty, 0) - coalesce(t.reserved, 0) < i.min_qty');
-  res.json((await pool.query(`${ITEM_SELECT} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY lower(i.name) LIMIT 1000`, p)).rows);
+  res.json((await pool.query(`${withTotal(ITEM_SELECT)} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY lower(i.name) LIMIT ${listLimit(req, 1000)}`, p)).rows);
 }));
 r.get('/pozycje/:id', idParam, view, wrap(async (req, res) => {
   const it = (await pool.query(ITEM_SELECT + ' WHERE i.id = $1', [req.params.id])).rows[0];
@@ -121,7 +121,7 @@ r.get('/dokumenty', view, wrap(async (req, res) => {
   if (req.query.do) { p.push(V.date(req.query.do)); w.push(`d.doc_date <= $${p.length}`); }
   if (req.query.powiazanie && req.query.id) { p.push(String(req.query.powiazanie), V.uuid(req.query.id)); w.push(`d.related_type = $${p.length - 1} AND d.related_id = $${p.length}`); }
   if (req.query.projekt) { p.push(V.uuid(req.query.projekt)); w.push(`d.project_id = $${p.length}`); }
-  res.json((await pool.query(`${DOC_SELECT} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY d.created_at DESC LIMIT 300`, p)).rows);
+  res.json((await pool.query(`${withTotal(DOC_SELECT)} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY d.created_at DESC LIMIT ${listLimit(req, 300)}`, p)).rows);
 }));
 r.get('/dokumenty/:id', idParam, view, wrap(async (req, res) => {
   const d = (await pool.query(DOC_SELECT + ' WHERE d.id = $1', [req.params.id])).rows[0];
@@ -157,6 +157,23 @@ r.post('/dokumenty', wrap(async (req, res) => {
   });
   await audit(req, 'magazyn.dokument', { resource: 'stock_docs', resourceId: doc.id, details: { numer: doc.number, rodzaj: doc.kind, wartosc: doc.total_value } });
   res.status(201).json(doc);
+}));
+
+// Anulowanie dokumentu wpisanego przez pomyłkę – cofa stany; wydanie/zwrot na zlecenie może anulować także rozliczający zlecenia.
+r.post('/dokumenty/:id/anuluj', idParam, anyOf(['stock.manage', 'service.manage']), wrap(async (req, res) => {
+  const reason = V.str((req.body || {}).powod, 500, true, 'Powód anulowania');
+  if (reason.length < 3) throw bad(400, 'Powód anulowania: podaj co najmniej 3 znaki.');
+  const kind = ((await pool.query('SELECT kind FROM stock_docs WHERE id = $1', [req.params.id])).rows[0] || {}).kind;
+  if (!kind) throw bad(404, 'Nie znaleziono dokumentu.');
+  if (!(can(req.user, 'stock.manage') || (['RW', 'ZW'].includes(kind) && can(req.user, 'service.manage')))) return requirePerm('stock.manage')(req, res, () => {});
+  const doc = await S.tx(async client => {
+    const d = await S.cancel(client, req.params.id, { userId: req.user.id, reason });
+    if (d.project_id) await client.query(`INSERT INTO project_events (project_id, kind, text, created_by) VALUES ($1, 'material', $2, $3)`,
+      [d.project_id, `${d.number}: dokument anulowany (${reason}) – materiały wróciły na stan`, req.user.id]);
+    return d;
+  });
+  await audit(req, 'magazyn.dokument.anulowanie', { resource: 'stock_docs', resourceId: doc.id, details: { numer: doc.number, rodzaj: doc.kind, wartosc: Number(doc.total_value), powod: reason } });
+  res.json((await pool.query(DOC_SELECT + ' WHERE d.id = $1', [doc.id])).rows[0]);
 }));
 
 // ---------- rezerwacje ----------

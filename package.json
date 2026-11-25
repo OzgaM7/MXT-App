@@ -9,7 +9,7 @@
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
     "test:ui": "node --env-file-if-exists=.env test/ui-erp.js",
     "hash": "node scripts/hash.js",
-    "test": "node test/haslo.js && node test/smoke.js && node test/etap2.js && node test/etap3.js && node test/etap4.js && node test/fundament.js && node test/serwisy.js && node test/odczyty.js && node test/harmonogram.js && node test/ghost.js && node test/asystent.js && node test/erp-fundamenty.js && node test/erp-operacje.js && node test/erp-ubezpieczenia.js && node test/erp-czesci-finanse.js"
+    "test": "node test/haslo.js && node test/smoke.js && node test/etap2.js && node test/etap3.js && node test/etap4.js && node test/fundament.js && node test/serwisy.js && node test/odczyty.js && node test/harmonogram.js && node test/ghost.js && node test/asystent.js && node test/erp-fundamenty.js && node test/erp-operacje.js && node test/erp-ubezpieczenia.js && node test/erp-czesci-finanse.js && node test/audyt-poprawki.js"
   },
   "engines": {
     "node": ">=22.9"

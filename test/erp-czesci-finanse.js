@@ -23,7 +23,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
   };
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
   const users = [], PASS = 'Erp-Test-2026x', T = { items: [], suppliers: [], customers: [], orders: [], pos: [], policies: [] };
-  const today = new Date().toISOString().slice(0, 10);
+  const { warsawDay } = require('./_setup'), today = warsawDay();   // jak aplikacja: data wg czasu polskiego
   try {
     for (let i = 0; i < 60; i++) { try { await fetch(base + '/api/health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
     const hash = await bcrypt.hash(PASS, 4);
@@ -64,7 +64,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
     let it = (await call('magazyn/pozycje/' + IT2.id, null, MG.c)).j; near(it.qty, 20, 'stan filtrów 20'); near(it.avg_cost, 60.8, 'średni koszt (12 × 60 + 8 × 62) / 20');
     r = await call('finanse-erp/zobowiazania', null, KS.c);
     const due = r.j.rows.find(x => x.id === PZ1.id); ok(due && due.invoice_no === 'FZ/T7/1' && due.counterparty === '[T7] Hurtownia Moto', 'zobowiązanie wobec dostawcy z faktury PZ');
-    ok(String(due.due_date).slice(0, 10) === new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10), 'termin płatności z warunków dostawcy (21 dni)');
+    ok(String(due.due_date).slice(0, 10) === warsawDay(21), 'termin płatności z warunków dostawcy (21 dni)');
     eq((await call('finanse-erp/zaplata', { source: 'pz', id: PZ1.id, paid_at: today }, KS.c)).s, 200, 'zapłata faktury dostawcy');
     ok(!(await call('finanse-erp/zobowiazania', null, KS.c)).j.rows.some(x => x.id === PZ1.id), 'zapłacone zobowiązanie znika z listy');
     eq((await call('finanse-erp/zaplata', { source: 'pz', id: PZ1.id }, KS.c)).s, 409, 'druga zapłata odrzucona');
@@ -92,7 +92,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
     r = await call('czesci/zamowienia/' + O.id + '/wydaj', {}, SP.c); eq(r.j.status, 'wydane', 'wydanie (WZ)');
     near(r.j.total_cost, 4 * 100 + 2 * 60.8, 'koszt sprzedanych części po średnim koszcie');
     it = (await call('magazyn/pozycje/' + IT.id, null, MG.c)).j; ok(it.qty == 6 && it.reserved == 0, 'stan po wydaniu 6, rezerwacja zużyta');
-    r = await call('czesci/zamowienia/' + O.id + '/faktura', { invoice_no: 'FV/T7/1', invoice_date: today, due_date: new Date(Date.now() - 864e5 * 0).toISOString().slice(0, 10) }, SP.c);
+    r = await call('czesci/zamowienia/' + O.id + '/faktura', { invoice_no: 'FV/T7/1', invoice_date: today, due_date: today }, SP.c);
     eq(r.j.status, 'zafakturowane', 'faktura'); const finRow = (await pool.query('SELECT * FROM finance WHERE part_order_id = $1', [O.id])).rows[0];
     ok(finRow.kind === 'przychod' && Number(finRow.amount_pln) === 900 && finRow.department_id === 'sprzedaz-czesci-i-eksport' && finRow.invoice_no === 'FV/T7/1', 'przychód działu sprzedaży części z fakturą');
     ok((await pool.query('SELECT 1 FROM sales_history WHERE number = $1', [O.number])).rows[0], 'wpis w historii sprzedaży');

@@ -10,10 +10,14 @@ const docs = require('../lib/docs');
 const nbp = require('../lib/nbp');
 const pdf = require('../lib/pdf');
 const offers = require('../lib/offers');
-const { wrap, idParam, V, bad, patchSql, sendPdf } = require('./_util');
+const { wrap, idParam, V, bad, patchSql, sendPdf, assertFresh, listLimit } = require('./_util');
 
 const r = express.Router();
 const use = requirePerm('tasks.use'), admin = requirePerm('approvals.decide');
+// Rejestr finansów firmy (Finance Intelligence): odczyt, wpisy i zapłaty tylko dla ról finansowych (jak moduł Finanse firmy).
+const fin = requirePerm('finance.view');
+const { r2 } = require('../lib/erp/stock');
+const { plToday } = require('../lib/dzis');
 const DEPTS = ['podzielniki-i-montaze', 'sprzedaz-czesci-i-eksport', 'ubezpieczenia'];
 const CUSTOMER_KINDS = ['osoba_prywatna', 'firma', 'wspolnota', 'spoldzielnia', 'zarzadca', 'klient_zagraniczny', 'inny'];
 
@@ -29,7 +33,24 @@ function customerFields(b, partial) {
   set('departments', v => (Array.isArray(v) ? v : []).filter(d => DEPTS.includes(d)));
   set('contacts', v => JSON.stringify((Array.isArray(v) ? v : []).slice(0, 30).map(c => ({ imie: V.str(c.imie, 120), funkcja: V.str(c.funkcja, 120), email: V.str(c.email, 200), telefon: V.str(c.telefon, 50) })).filter(c => c.imie || c.email || c.telefon)));
   if (o.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email)) throw bad(400, 'Nieprawidłowy adres e-mail.');
+  // Polski NIP (10 cyfr, opcjonalnie z prefiksem PL i separatorami): suma kontrolna. Zagraniczne VAT ID i PESEL bez kontroli.
+  if (o.tax_id && (!b.country || String(b.country).toUpperCase() === 'PL')) {
+    const d = o.tax_id.replace(/^PL/i, '').replace(/[\s-]/g, '');
+    if (/^\d{10}$/.test(d)) {
+      const w = [6, 5, 7, 2, 3, 4, 5, 6, 7], sum = w.reduce((a, x, i) => a + x * Number(d[i]), 0) % 11;
+      if (sum === 10 || sum !== Number(d[9])) throw bad(400, 'NIP ma błędną sumę kontrolną – sprawdź numer.');
+    }
+  }
   return o;
+}
+// Możliwy duplikat: ten sam NIP albo ta sama nazwa z tym samym telefonem (ostatnie 9 cyfr, z +48 lub bez) lub e-mailem (także po odświeżeniu strony w trakcie zapisu).
+async function findDuplicate(o, exceptId) {
+  const nip = String(o.tax_id || '').replace(/^PL/i, '').replace(/\D/g, ''), ph = String(o.phone || '').replace(/\D/g, '');
+  const r = await pool.query(`SELECT id, name, tax_id, archived_at FROM customers WHERE ($4::uuid IS NULL OR id <> $4) AND (
+      (length($1) >= 8 AND regexp_replace(regexp_replace(tax_id, '^PL', '', 'i'), '\\D', '', 'g') = $1)
+      OR (lower(trim(name)) = lower(trim($2)) AND ((length($3) >= 6 AND right(regexp_replace(phone, '\\D', '', 'g'), 9) = right($3, 9)) OR ($5 <> '' AND lower(email) = lower($5))))
+    ) ORDER BY archived_at NULLS FIRST LIMIT 1`, [nip, o.name || '', ph, exceptId || null, o.email || '']);
+  return r.rows[0] || null;
 }
 r.get('/klienci', use, wrap(async (req, res) => {
   const p = [], w = [];
@@ -43,13 +64,19 @@ r.get('/klienci', use, wrap(async (req, res) => {
   }
   if (DEPTS.includes(req.query.dzial)) { p.push(req.query.dzial); w.push(`$${p.length} = ANY(departments)`); }
   if (CUSTOMER_KINDS.includes(req.query.rodzaj)) { p.push(req.query.rodzaj); w.push(`kind = $${p.length}`); }
-  const q = await pool.query(`SELECT c.*, (SELECT count(*)::int FROM buildings b WHERE b.customer_id = c.id) AS buildings,
+  w.push(req.query.archiwum === '1' ? 'archived_at IS NOT NULL' : 'archived_at IS NULL');   // archiwum osobno, domyślnie aktywni
+  const q = await pool.query(`SELECT count(*) OVER()::int AS total_count, c.*, (SELECT count(*)::int FROM buildings b WHERE b.customer_id = c.id) AS buildings,
       (SELECT count(*)::int FROM offers o WHERE o.customer_id = c.id) AS offers, (SELECT count(*)::int FROM complaints x WHERE x.customer_id = c.id AND x.status NOT IN ('rozwiazana','odrzucona')) AS open_complaints
-    FROM customers c ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY lower(name) LIMIT 300`, p);
+    FROM customers c ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY lower(name) LIMIT ${listLimit(req, 300)}`, p);
   res.json(q.rows);
 }));
 r.post('/klienci', use, wrap(async (req, res) => {
   const o = customerFields(req.body || {}, false);
+  if (!(req.body || {}).potwierdz_duplikat) {
+    const d = await findDuplicate(o);
+    if (d) return res.status(409).json({ error: `W CRM jest już klient „${d.name}”${d.tax_id ? ' (NIP ' + d.tax_id + ')' : ''}${d.archived_at ? ' – w archiwum' : ''}. Otwórz istniejącego albo potwierdź dodanie nowego.`,
+      duplikat: true, istniejacy: { id: d.id, name: d.name, archiwum: !!d.archived_at } });
+  }
   const q = await pool.query(`INSERT INTO customers (kind, name, tax_id, country, address, email, phone, language, contacts, departments, notes, created_by)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [o.kind, o.name, o.tax_id, o.country, o.address, o.email, o.phone, o.language, o.contacts, o.departments, o.notes, req.user.id]);
@@ -57,11 +84,69 @@ r.post('/klienci', use, wrap(async (req, res) => {
   res.status(201).json(q.rows[0]);
 }));
 r.patch('/klienci/:id', idParam, use, wrap(async (req, res) => {
+  await assertFresh(pool, 'customers', req.params.id, (req.body || {}).updated_at);
   const { sql, params } = patchSql('customers', req.params.id, customerFields(req.body || {}, true));
   const q = await pool.query(sql, params);
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono klienta.');
   await audit(req, 'klient.zmiana', { resource: 'customers', resourceId: req.params.id });
   res.json(q.rows[0]);
+}));
+// ---------- usuwanie, archiwizacja, anonimizacja (RODO) ----------
+// Klient z historią (zlecenia, polisy, faktury…) nie jest kasowany – historia rozliczeń musi zostać. Można go zarchiwizować
+// (znika z list i wyszukiwarki) albo zanonimizować dane osobowe na żądanie (RODO). Klienta bez historii można usunąć.
+const REL = [['offers', 'oferty'], ['sales_history', 'sprzedaż'], ['projects', 'kontrakty'], ['buildings', 'budynki'], ['export_documents', 'dokumenty eksportowe'],
+  ['complaints', 'reklamacje'], ['finance', 'wpisy finansowe'], ['service_orders', 'zlecenia serwisowe'], ['reading_schedules', 'harmonogramy odczytów'],
+  ['stock_docs', 'dokumenty magazynowe'], ['policies', 'polisy'], ['part_orders', 'zamówienia części']];
+async function customerRelations(c, id) {
+  const r = (await c.query(`SELECT ${REL.map(([t], i) => `(SELECT count(*)::int FROM ${t} WHERE customer_id = $1) AS r${i}`).join(', ')}`, [id])).rows[0];
+  return REL.map(([, l], i) => [l, r['r' + i]]).filter(([, n]) => n > 0);
+}
+const delPerm = requirePerm('customers.delete');
+async function inTx(fn) {
+  const client = await pool.connect();
+  try { await client.query('BEGIN'); const out = await fn(client); await client.query('COMMIT'); return out; }
+  catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+}
+r.get('/klienci/:id/powiazania', idParam, use, wrap(async (req, res) => res.json(await customerRelations(pool, req.params.id))));
+r.delete('/klienci/:id', idParam, delPerm, wrap(async (req, res) => {
+  await inTx(async client => {
+    const c = (await client.query('SELECT id, name FROM customers WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!c) throw bad(404, 'Nie znaleziono klienta.');
+    const rel = await customerRelations(client, c.id);
+    if (rel.length) throw bad(409, `Klient ma historię (${rel.map(([l, n]) => `${l}: ${n}`).join(', ')}) – nie można go usunąć. Zarchiwizuj go albo zanonimizuj dane osobowe.`);
+    await client.query('DELETE FROM customers WHERE id = $1', [c.id]);   // historia kontaktów usuwa się kaskadowo
+    await audit(req, 'klient.usuniecie', { resource: 'customers', resourceId: c.id, details: { nazwa: c.name }, client });
+  });
+  res.json({ ok: true });
+}));
+r.post('/klienci/:id/archiwizuj', idParam, use, wrap(async (req, res) => {
+  const q = await pool.query(`UPDATE customers SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now() WHERE id = $1 AND archived_at IS NULL RETURNING id, name`,
+    [req.params.id, req.user.id, V.str((req.body || {}).powod, 300)]);
+  if (!q.rows[0]) throw bad(409, 'Klient nie istnieje albo jest już w archiwum.');
+  await audit(req, 'klient.archiwizacja', { resource: 'customers', resourceId: req.params.id, details: { nazwa: q.rows[0].name } });
+  res.json({ ok: true });
+}));
+r.post('/klienci/:id/przywroc', idParam, use, wrap(async (req, res) => {
+  const q = await pool.query(`UPDATE customers SET archived_at = NULL, archived_by = NULL, archive_reason = '', updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL AND anonymized_at IS NULL RETURNING id`, [req.params.id]);
+  if (!q.rows[0]) throw bad(409, 'Klient nie jest w archiwum (albo jego dane zostały zanonimizowane).');
+  await audit(req, 'klient.przywrocenie', { resource: 'customers', resourceId: req.params.id });
+  res.json({ ok: true });
+}));
+r.post('/klienci/:id/anonimizuj', idParam, delPerm, wrap(async (req, res) => {
+  const reason = V.str((req.body || {}).powod, 300, true, 'Powód (np. żądanie klienta z dnia…)');
+  await inTx(async client => {
+    const c = (await client.query('SELECT id FROM customers WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!c) throw bad(404, 'Nie znaleziono klienta.');
+    // Dane osobowe usunięte; numery dokumentów i kwoty (faktury, polisy) zostają – obowiązek przechowywania dokumentacji.
+    await client.query(`UPDATE customers SET name = 'Klient zanonimizowany ' || upper(substr(id::text, 1, 6)), tax_id = '', address = '', email = '', phone = '',
+        contacts = '[]', notes = '', anonymized_at = now(), archived_at = coalesce(archived_at, now()), archived_by = coalesce(archived_by, $2), archive_reason = $3, updated_at = now() WHERE id = $1`,
+      [c.id, req.user.id, 'Anonimizacja: ' + reason]);
+    await client.query('DELETE FROM communications WHERE customer_id = $1', [c.id]);
+    await client.query(`UPDATE mail_outbox SET to_addr = '', body_text = '' WHERE customer_id = $1`, [c.id]);
+    await client.query(`UPDATE service_orders SET client_name = 'Zanonimizowano', contact_name = '', contact_phone = '' WHERE customer_id = $1`, [c.id]);
+    await audit(req, 'klient.anonimizacja', { resource: 'customers', resourceId: c.id, details: { powod: reason }, client });
+  });
+  res.json({ ok: true });
 }));
 // Karta klienta: kontakty i pełna historia współpracy.
 r.get('/klienci/:id', idParam, use, wrap(async (req, res) => {
@@ -96,31 +181,47 @@ r.post('/klienci/:id/komunikacja', idParam, use, wrap(async (req, res) => {
 
 // ======================= Finance Intelligence (działy 1 i 2) =======================
 const FIN_DEPTS = ['podzielniki-i-montaze', 'sprzedaz-czesci-i-eksport'];
-r.get('/finanse', use, wrap(async (req, res) => {
+r.get('/finanse', fin, wrap(async (req, res) => {
   const p = [], w = [];
   if (FIN_DEPTS.includes(req.query.dzial)) { p.push(req.query.dzial); w.push(`f.department_id = $${p.length}`); }
   if (['przychod', 'koszt'].includes(req.query.rodzaj)) { p.push(req.query.rodzaj); w.push(`f.kind = $${p.length}`); }
   if (req.query.status === 'nieoplacone') w.push(`f.kind = 'przychod' AND f.invoice_no <> '' AND f.paid_at IS NULL`);
   if (req.query.status === 'po_terminie') w.push(`f.kind = 'przychod' AND f.paid_at IS NULL AND f.due_date < current_date`);
   for (const k of ['building_id', 'project_id', 'installation_id', 'customer_id']) if (req.query[k]) { p.push(V.uuid(req.query[k])); w.push(`f.${k} = $${p.length}`); }
-  const q = await pool.query(`SELECT f.*, f.amount::float AS amount, f.amount_pln::float AS amount_pln, c.name AS customer_name, b.name AS building_name, pr.number AS project_number, i.number AS installation_number
+  const q = await pool.query(`SELECT count(*) OVER()::int AS total_count, f.*, f.amount::float AS amount, f.amount_pln::float AS amount_pln, c.name AS customer_name, b.name AS building_name, pr.number AS project_number, i.number AS installation_number
     FROM finance f LEFT JOIN customers c ON c.id = f.customer_id LEFT JOIN buildings b ON b.id = f.building_id LEFT JOIN projects pr ON pr.id = f.project_id
-    LEFT JOIN installations i ON i.id = f.installation_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY f.entry_date DESC, f.created_at DESC LIMIT 300`, p);
+    LEFT JOIN installations i ON i.id = f.installation_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY f.entry_date DESC, f.created_at DESC LIMIT ${listLimit(req, 300)}`, p);
   res.json(q.rows);
 }));
-r.post('/finanse', use, wrap(async (req, res) => {
+r.post('/finanse', fin, wrap(async (req, res) => {
   const b = req.body || {};
   const dep = V.oneOf(b.department_id, FIN_DEPTS, 'Dział'), kind = V.oneOf(b.kind, ['przychod', 'koszt'], 'Rodzaj');
-  const amount = V.num(b.amount, 0.01, 1e10, 'Kwota'), currency = (V.str(b.currency, 3) || 'PLN').toUpperCase(), date = V.date(b.entry_date) || new Date().toISOString().slice(0, 10);
+  // Kwota zaokrąglana do grosza raz, tą samą funkcją co w pozostałych modułach (amount i amount_pln zawsze spójne).
+  const amount = r2(V.num(b.amount, 0.01, 1e10, 'Kwota')), currency = (V.str(b.currency, 3) || 'PLN').toUpperCase(), date = V.date(b.entry_date) || plToday();
+  if (!(amount >= 0.01)) throw bad(400, 'Kwota: co najmniej 0,01.');
+  const instId = V.uuid(b.installation_id), invoiceNo = V.str(b.invoice_no, 60);
+  // Ochrona przed podwójnym przychodem: zlecenie już rozliczone albo ta sama faktura zapisana wcześniej – wymagane świadome potwierdzenie.
+  if (kind === 'przychod' && !b.potwierdz_duplikat) {
+    const warn = [];
+    if (instId) {
+      const st = (await pool.query(`SELECT i.number, i.settled_at, i.invoice_no FROM installations i WHERE i.id = $1`, [instId])).rows[0];
+      if (st && st.settled_at) warn.push(`Montaż ${st.number} jest już rozliczony${st.invoice_no ? ' fakturą ' + st.invoice_no : ''}.`);
+    }
+    if (invoiceNo) {
+      const dup = (await pool.query(`SELECT entry_date, amount_pln::float a FROM finance WHERE kind = 'przychod' AND lower(trim(invoice_no)) = lower(trim($1)) LIMIT 1`, [invoiceNo])).rows[0];
+      if (dup) warn.push(`Faktura ${invoiceNo} jest już zapisana (${String(dup.entry_date).slice(0, 10)}, ${dup.a.toFixed(2).replace('.', ',')} zł).`);
+    }
+    if (warn.length) return res.status(409).json({ error: warn.join(' ') + ' Zapisz ponownie z potwierdzeniem, jeśli to osobny przychód.', duplikat: true });
+  }
   let rate; try { rate = await nbp.rateFor(currency, date); } catch (e) { throw bad(e.status || 409, e.message); }
   const q = await pool.query(`INSERT INTO finance (department_id, kind, category, description, amount, currency, rate_pln, amount_pln, entry_date, invoice_no, due_date, paid_at,
       customer_id, project_id, building_id, installation_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-    [dep, kind, V.str(b.category, 60), V.str(b.description, 500), amount, currency, rate.rate_pln, Math.round(amount * rate.rate_pln * 100) / 100, date, V.str(b.invoice_no, 60),
-      V.date(b.due_date, 'Termin płatności'), V.date(b.paid_at, 'Data zapłaty'), V.uuid(b.customer_id), V.uuid(b.project_id), V.uuid(b.building_id), V.uuid(b.installation_id), req.user.id]);
+    [dep, kind, V.str(b.category, 60), V.str(b.description, 500), amount, currency, rate.rate_pln, r2(amount * rate.rate_pln), date, invoiceNo,
+      V.date(b.due_date, 'Termin płatności'), V.date(b.paid_at, 'Data zapłaty'), V.uuid(b.customer_id), V.uuid(b.project_id), V.uuid(b.building_id), instId, req.user.id]);
   await audit(req, 'finanse.wpis', { resource: 'finance', resourceId: q.rows[0].id, details: { rodzaj: kind, kwota: amount, waluta: currency } });
   res.status(201).json(q.rows[0]);
 }));
-r.post('/finanse/:id/zaplacono', idParam, use, wrap(async (req, res) => {
+r.post('/finanse/:id/zaplacono', idParam, fin, wrap(async (req, res) => {
   const q = await pool.query(`UPDATE finance SET paid_at = coalesce($2::date, current_date) WHERE id = $1 RETURNING *`, [req.params.id, V.date((req.body || {}).paid_at)]);
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono wpisu.');
   await audit(req, 'finanse.zaplata', { resource: 'finance', resourceId: req.params.id });
@@ -143,13 +244,13 @@ r.post('/finanse/:id/anuluj', idParam, requirePerm('finance.cancel'), wrap(async
     res.json({ ok: true });
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
-r.get('/finanse/anulowane', use, wrap(async (req, res) => {
+r.get('/finanse/anulowane', fin, wrap(async (req, res) => {
   const q = await pool.query(`SELECT x.id, x.data, x.reason, x.cancelled_at, u.login AS cancelled_by_login FROM finance_cancelled x LEFT JOIN users u ON u.id = x.cancelled_by
     ORDER BY x.cancelled_at DESC LIMIT 200`);
   res.json(q.rows);
 }));
 // Podsumowanie: przychody, koszty, marże miesięcznie (12 mies.), należności, prognoza (średnia z 3 pełnych miesięcy).
-r.get('/finanse/podsumowanie', use, wrap(async (req, res) => res.json(await financeSummary())));
+r.get('/finanse/podsumowanie', fin, wrap(async (req, res) => res.json(await financeSummary())));
 async function financeSummary() {
   const [m, t, inv] = await Promise.all([
     pool.query(`SELECT to_char(date_trunc('month', entry_date), 'YYYY-MM') AS miesiac, department_id,
@@ -276,7 +377,7 @@ r.post('/reklamacje', use, wrap(async (req, res) => {
 }));
 r.patch('/reklamacje/:id', idParam, use, wrap(async (req, res) => {
   const b = req.body || {}, f = {};
-  if (b.status !== undefined) { f.status = V.oneOf(b.status, CPL_ST, 'Status'); f.resolved_at = ['rozwiazana', 'odrzucona'].includes(f.status) ? new Date().toISOString().slice(0, 10) : null; }
+  if (b.status !== undefined) { f.status = V.oneOf(b.status, CPL_ST, 'Status'); f.resolved_at = ['rozwiazana', 'odrzucona'].includes(f.status) ? plToday() : null; }
   if (b.resolution !== undefined) f.resolution = V.str(b.resolution, 5000);
   if (b.description !== undefined) f.description = V.str(b.description, 5000);
   const { sql, params } = patchSql('complaints', req.params.id, f);
@@ -310,7 +411,7 @@ r.post('/eksport', use, wrap(async (req, res) => {
   try {
     await client.query('BEGIN');
     const number = await docs.nextNumber(client, { faktura_eksportowa: 'FE', specyfikacja_wysylkowa: 'PL', dane_celne: 'DC' }[kind]);
-    const data = { kind, number, date: new Date().toISOString().slice(0, 10), customer: c.name, customer_address: c.address, customer_tax: c.tax_id, destination_country: dest, incoterms,
+    const data = { kind, number, date: plToday(), customer: c.name, customer_address: c.address, customer_tax: c.tax_id, destination_country: dest, incoterms,
       reference: src.ref, items: src.items, total: src.total, currency: src.currency, notes: V.str(b.notes, 2000) };
     const file = await pdf.exportDoc(data);
     const doc = await docs.createDocument(client, { kind: 'eksport', title: `${pdf.EXPORT_TITLES[kind]} ${number}`, department_id: 'sprzedaz-czesci-i-eksport', related_type: 'export', userId: req.user.id });
@@ -373,6 +474,8 @@ r.post('/wiedza/:id/wersja', idParam, use, wrap(async (req, res) => res.status(2
 r.get('/dokumenty/:id/plik', idParam, use, wrap(async (req, res) => {
   const v = await docs.getVersion(req.params.id, parseInt(req.query.v, 10) || null);
   if (!v || !v.file_data) throw bad(404, 'Ten dokument nie ma pliku PDF.');
+  // Dokumenty polis (dane osobowe i majątkowe klientów) – tylko z dostępem do Ubezpieczeń, także przy znajomości identyfikatora.
+  if ((v.related_type === 'policy' || v.department_id === 'ubezpieczenia') && !can(req.user, 'insurance.manage')) throw bad(403, 'Brak dostępu do dokumentów działu Ubezpieczenia.');
   // Skan dokumentu (np. polisy) jako obraz – z właściwym typem i bez wykonywania treści.
   if (['image/jpeg', 'image/png'].includes(v.mime_type)) {
     res.set({ 'Content-Type': v.mime_type, 'Content-Length': v.file_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',

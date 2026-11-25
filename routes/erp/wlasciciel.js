@@ -7,6 +7,7 @@ const { pool } = require('../../db');
 const { requirePerm } = require('../../lib/rbac');
 const { results } = require('./finanse');
 const { wrap, V } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const TODAY = `(now() AT TIME ZONE 'Europe/Warsaw')::date`;
@@ -14,8 +15,8 @@ const OPEN = `status NOT IN ('wykonane','rozliczone','zamkniete','anulowane')`;
 const zl = n => Number(n).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
 
 r.get('/wlasciciel', requirePerm('owner.dashboard'), wrap(async (req, res) => {
-  const od = V.date(req.query.od, 'Od') || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const dd = V.date(req.query.do, 'Do') || new Date().toISOString().slice(0, 10);
+  const od = V.date(req.query.od, 'Od') || plToday().slice(0, 8) + '01';
+  const dd = V.date(req.query.do, 'Do') || plToday();
   const one = async (sql, p = []) => (await pool.query(sql, p)).rows[0];
   const [fin, ops, load, stock, rec, pay, tasks, pol, rem, sales] = await Promise.all([
     results(od, dd),
@@ -45,7 +46,7 @@ r.get('/wlasciciel', requirePerm('owner.dashboard'), wrap(async (req, res) => {
     one(`SELECT count(*) FILTER (WHERE status IN ('nowe','w_toku'))::int AS otwarte, count(*) FILTER (WHERE status IN ('nowe','w_toku') AND due_date < ${TODAY})::int AS po_terminie FROM tasks`),
     one(`SELECT count(*) FILTER (WHERE signed_at BETWEEN $1 AND $2)::int AS podpisane, coalesce(sum(total_amount) FILTER (WHERE signed_at BETWEEN $1 AND $2), 0)::float AS kwota,
         coalesce(sum(profit) FILTER (WHERE signed_at BETWEEN $1 AND $2), 0)::float AS zysk, count(*) FILTER (WHERE status = 'konczy_sie')::int AS konczy_30,
-        count(*) FILTER (WHERE status IN ('aktywna', 'konczy_sie'))::int AS aktywne FROM policies_v`, [od, dd]),
+        count(*) FILTER (WHERE status IN ('aktywna', 'konczy_sie'))::int AS aktywne FROM policies_v WHERE cancelled_at IS NULL`, [od, dd]),
     one(`SELECT count(*)::int AS nowe FROM policy_reminders WHERE handled_at IS NULL`),
     one(`SELECT count(*)::int AS n, coalesce(sum(total_net), 0)::float AS przychod FROM part_orders WHERE status = 'zafakturowane' AND invoice_date BETWEEN $1 AND $2`, [od, dd])
   ]);

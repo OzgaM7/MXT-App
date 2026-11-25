@@ -15,7 +15,7 @@ const fails = [], errs = [];
 const ok = (c, m) => { if (c) passed++; else fails.push(m); };
 
 (async () => {
-  const PORT = 7600 + Math.floor(Math.random() * 300), BASE = 'http://localhost:' + PORT;
+  const PORT = require('./_setup').testPort(7600, 300), BASE = 'http://localhost:' + PORT;
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, WORKERS: '0' }, stdio: ['ignore', 'ignore', 'inherit'] });
   const call = async (p, body, cookie, method) => {
     const r = await fetch(BASE + '/api/' + p, { method: method || (body ? 'POST' : 'GET'), headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -36,6 +36,7 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     };
     const AC = await mk('tui.admin' + tag, 'administrator');
     await mk('tui.magazyn' + tag, 'magazynier');
+    await mk('tui.prac' + tag, 'monter');   // pracownik do edycji i wyłączenia z interfejsu
 
     // ---------- dane robocze przez API ----------
     const W = (await call('magazyn/magazyny', null, AC)).find(w => w.code === 'MAG');
@@ -119,8 +120,47 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     ok((await p.$$('.ow-stat')).length >= 15, 'pulpit właściciela: kafelki operacji, polis i części');
     await p.click('[data-pp="rok"]'); await p.waitForSelector('[data-pp="rok"][aria-pressed="true"]'); ok(true, 'filtr okresu');
 
+    // ---------- CRM: edycja z listy, archiwum, usuwanie (zgłoszenie: „nie mogę edytować i kasować klientów”) ----------
+    const C0 = await call('klienci', { kind: 'firma', name: '[T-UI] Do usunięcia ' + tag }, AC); T.customers.push(C0.id);
+    await p.goto(BASE + '/crm'); await p.waitForSelector('#crm-f');
+    await p.fill('#crm-f input[name=q]', tag); await p.click('#crm-f [type=submit]'); await p.waitForSelector(`tbody tr:has-text("Warsztat ${tag}") [data-cedit]`);
+    await p.click(`tbody tr:has-text("Warsztat ${tag}") [data-cedit]`); await p.waitForSelector('#c-name');
+    await p.fill('#c-name', '[T-UI] Warsztat ' + tag + ' – edycja'); await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`tbody :text("Warsztat ${tag} – edycja")`);
+    ok(true, 'CRM: „Edytuj” w wierszu listy zapisuje zmianę klienta');
+    await p.click('table.table thead th:has-text("Klient")');
+    ok(await p.getAttribute('table.table thead th:has-text("Klient")', 'aria-sort') === 'ascending', 'tabela sortuje się po kliknięciu nagłówka');
+    await p.click(`tbody tr:has-text("Warsztat ${tag}") [data-cust] >> nth=0`); await p.waitForSelector('#cc-del');
+    ok(!!(await p.$('#cc-arch')) && !!(await p.$('#cc-anon')), 'karta klienta: Archiwizuj, Usuń, Anonimizuj');
+    await p.click('#cc-del'); await p.waitForSelector('#toast:has-text("ma historię")');
+    ok(true, 'klient z historią (zamówienia): komunikat zamiast usunięcia');
+    await p.keyboard.press('Escape'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.click(`tbody tr:has-text("Do usunięcia ${tag}") [data-cust] >> nth=0`); await p.waitForSelector('#cc-del');
+    await p.click('#cc-del'); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`tbody tr:has-text("Do usunięcia ${tag}")`, { state: 'detached' });
+    ok(!(await pool.query('SELECT 1 FROM customers WHERE id = $1', [C0.id])).rows.length, 'klient bez historii usunięty z interfejsu');
+
+    // ---------- Pracownicy: edycja konta, wyłączenie, usunięcie (zgłoszenie: „nie mogę edytować i kasować pracowników”) ----------
+    await p.goto(BASE + '/pracownicy'); await p.waitForSelector(`tbody tr:has-text("tui.prac${tag}")`);
+    await p.click(`tbody tr:has-text("tui.prac${tag}") td.td-actions [data-e]`); await p.waitForSelector('#e-acc');
+    await p.click('#e-acc'); await p.waitForSelector('#a-name');
+    await p.fill('#a-name', '[T-UI] Jan Edytowany ' + tag); await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`tbody :text("Jan Edytowany ${tag}")`);
+    ok(true, 'Pracownicy: „Edytuj konto” zmienia imię i nazwisko');
+    await p.click(`tbody tr:has-text("Jan Edytowany ${tag}") td.td-actions [data-e]`); await p.waitForSelector('#e-tog');
+    await p.click('#e-tog'); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`tbody tr:has-text("Jan Edytowany ${tag}")`, { state: 'detached' });
+    ok(true, 'wyłączone konto znika z listy (domyślnie tylko aktywne)');
+    await p.check('#e-off'); await p.waitForSelector(`tbody tr.row-off:has-text("Jan Edytowany ${tag}")`);
+    ok(true, '„Pokaż wyłączone konta” pokazuje wyłączonego pracownika');
+    await p.click(`tbody tr:has-text("Jan Edytowany ${tag}") td.td-actions [data-e]`); await p.waitForSelector('#e-del');
+    await p.click('#e-del'); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`tbody tr:has-text("Jan Edytowany ${tag}")`, { state: 'detached' });
+    ok(!(await pool.query('SELECT 1 FROM users WHERE login = $1', ['tui.prac' + tag])).rows.length, 'konto bez historii usunięte z interfejsu');
+    await p.uncheck('#e-off').catch(() => {});
+
     // ---------- wszystkie zakładki modułów ERP: bez błędów JS i 5xx ----------
-    const pages = ['/dzial/podzielniki-i-montaze', '/dzial/sprzedaz-czesci-i-eksport', '/dzial/ubezpieczenia', '/magazyn', '/finanse-firmy', '/pracownicy', '/moj-czas', '/szkolenia', '/pulpit-wlasciciela'];
+    const pages = ['/dzial/podzielniki-i-montaze', '/dzial/sprzedaz-czesci-i-eksport', '/dzial/ubezpieczenia', '/magazyn', '/finanse-firmy', '/pracownicy', '/moj-czas', '/szkolenia', '/pulpit-wlasciciela', '/crm', '/konta'];
     let tabs = 0;
     for (const url of pages) {
       await p.goto(BASE + url); await p.waitForSelector('.mod-body'); await p.waitForLoadState('networkidle');

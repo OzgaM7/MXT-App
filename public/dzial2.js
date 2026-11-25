@@ -19,7 +19,7 @@
   let tab = 'zamowienia', lastCalc = null;
 
   async function page(root, path, alive) {
-    const sp = new URLSearchParams(location.search);
+    const sp = U().urlParams();
     // Zamówienia, produkty i analityka wymagają uprawnienia sprzedaży części (backend i tak je sprawdza).
     const tabs = TABS.filter(t => !['zamowienia', 'produkty', 'analityka'].includes(t[0]) || U().has('parts.sell'));
     if (sp.get('tab') && tabs.some(t => t[0] === sp.get('tab'))) tab = sp.get('tab');

@@ -4,7 +4,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { audit } = require('../lib/audit');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, can } = require('../lib/rbac');
 const xlsx = require('../lib/xlsx');
 const { wrap, bad, V } = require('./_util');
 
@@ -155,6 +155,8 @@ const TITLES = { budynki: 'Budynki', urzadzenia: 'Urządzenia', montaze: 'Harmon
 r.get('/d1/:lista', exp, wrap(async (req, res) => {
   const name = req.params.lista;
   if (!Object.prototype.hasOwnProperty.call(LISTS, name)) throw bad(404, 'Nie ma takiego zestawienia.');
+  // Zestawienia finansowe (rejestr finansów, ranking rentowności) – tak jak w aplikacji, tylko dla ról finansowych.
+  if (['finanse', 'rentownosc'].includes(name) && !can(req.user, 'finance.view')) throw bad(403, 'Brak uprawnień do zestawień finansowych.');
   const sheets = await LISTS[name](req);
   const buf = await xlsx.build(sheets, { title: 'MXT – Podzielniki i Montaże – ' + TITLES[name] });
   await audit(req, 'eksport.xlsx', { resource: 'eksport/d1/' + name, details: { zestawienie: TITLES[name], wiersze: sheets.reduce((s, x) => s + x.rows.length, 0),

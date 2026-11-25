@@ -15,7 +15,7 @@ const day = n => { const d = new Date(today() + 'T12:00:00Z'); d.setUTCDate(d.ge
 const plusMonths = (s, m) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + m); return d.toISOString().slice(0, 10); };
 
 (async () => {
-  const PORT = 6000 + Math.floor(Math.random() * 200), base = 'http://localhost:' + PORT;
+  const PORT = require('./_setup').testPort(6000, 200), base = 'http://localhost:' + PORT;
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, WORKERS: '0' }, stdio: ['ignore', 'ignore', 'inherit'] });
   const call = async (p, body, cookie, method) => {
     const r = await fetch(base + '/api/' + p, { method: method || (body ? 'POST' : 'GET'),

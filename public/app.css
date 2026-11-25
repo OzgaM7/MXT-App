@@ -1205,3 +1205,13 @@ div.kpi { cursor: default; }
   .table-cards .tr-total { background: var(--bg); }
   .table-cards .tr-total td { border-top: 0; }
 }
+
+/* ---------- poprawki po audycie: długie listy, sortowanie tabel, duże kwoty w kafelkach ---------- */
+.list-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.table > thead th { cursor: pointer; user-select: none; }
+.table > thead th:empty { cursor: default; }
+.table > thead th[aria-sort]::after { content: ' ▲'; font-size: 9px; color: var(--ink, currentColor); }
+.table > thead th[aria-sort="descending"]::after { content: ' ▼'; }
+[data-nosort] .table > thead th { cursor: default; }
+.hk-v, .kpi-v { overflow-wrap: anywhere; min-width: 0; }
+.hk-v { font-size: clamp(18px, 2.2vw, 26px); }

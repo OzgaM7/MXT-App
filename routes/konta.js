@@ -1,6 +1,6 @@
 'use strict';
 // Konta pracowników (administrator): zakładanie, role, dane kontaktowe, powiązanie z instalatorem, dezaktywacja, reset hasła.
-// Kont się nie usuwa – po odejściu pracownika konto jest wyłączane, a jego wpisy (montaże, rozliczenia, rejestr) zostają.
+// Po odejściu pracownika konto jest wyłączane, a jego wpisy (montaże, rozliczenia, rejestr) zostają. Usunąć można tylko konto bez historii.
 const express = require('express'), crypto = require('crypto'), bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { audit } = require('../lib/audit');
@@ -120,6 +120,40 @@ r.patch('/:id', idParam, manage, wrap(async (req, res) => {
       { resource: 'users', resourceId: t.id, details, client });
     await client.query('COMMIT');
     res.json((await pool.query(LIST + ' WHERE u.id = $1', [t.id])).rows[0]);
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+}));
+
+// Usuwanie konta: tylko konto bez historii (założone przez pomyłkę, nigdy nie użyte w pracy). Konto z wpisami
+// (montaże, serwisy, finanse, czas pracy, dokumenty…) się wyłącza – historia musi wskazywać autora.
+// Historia = każdy wiersz w tabeli z kluczem obcym do users bez kaskady (sesje, powiadomienia, push i widoki usuwają się same).
+const USER_REF_LABEL = { time_entries: 'czas pracy', absences: 'nieobecności', installations: 'montaże', service_orders: 'zlecenia serwisowe', readings: 'odczyty',
+  reading_schedules: 'harmonogramy odczytów', finance: 'wpisy finansowe', customers: 'klienci', buildings: 'budynki', policies: 'polisy', offers: 'oferty',
+  stock_docs: 'dokumenty magazynowe', part_orders: 'zamówienia części', purchase_orders: 'zamówienia zakupu', tasks: 'zadania', projects: 'projekty',
+  documents: 'dokumenty', communications: 'historia kontaktów', users: 'założone konta', quiz_results: 'wyniki szkoleń', user_progress: 'postęp szkoleń', certificates: 'certyfikaty' };
+async function userHistory(client, id) {
+  const refs = (await client.query(`SELECT c.conrelid::regclass::text AS t, a.attname AS col FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+    WHERE c.confrelid = 'users'::regclass AND c.contype = 'f' AND c.confdeltype NOT IN ('c', 'n') ORDER BY 1, 2`)).rows;
+  const n = (await client.query(`SELECT ${refs.map((x, i) => `(SELECT count(*)::int FROM ${x.t} WHERE ${x.col} = $1) AS r${i}`).join(', ')}`, [id])).rows[0];
+  const out = {};
+  refs.forEach((x, i) => { if (n['r' + i]) { const l = USER_REF_LABEL[x.t] || x.t.replace(/_/g, ' '); out[l] = (out[l] || 0) + n['r' + i]; } });
+  return Object.entries(out);
+}
+r.get('/:id/historia', idParam, manage, wrap(async (req, res) => res.json(await userHistory(pool, req.params.id))));
+r.delete('/:id', idParam, manage, wrap(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const t = (await client.query('SELECT id, login, role FROM users WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!t) throw bad(404, 'Nie znaleziono konta.');
+    if (t.id === req.user.id) throw bad(400, 'Nie możesz usunąć własnego konta.');
+    const h = await userHistory(client, t.id);
+    if (h.length) throw bad(409, `Konto ma historię w systemie (${h.map(([l, k]) => `${l}: ${k}`).join(', ')}) – nie można go usunąć. Wyłącz konto: pracownik nie zaloguje się, a jego wpisy zostaną.`);
+    await client.query('DELETE FROM users WHERE id = $1', [t.id]);   // sesje, powiadomienia i urządzenia push usuwają się kaskadowo
+    await assertAdminLeft(client);
+    await audit(req, 'konto.usuniecie', { resource: 'users', resourceId: t.id, details: { konto: t.login, rola: t.role }, client });
+    await client.query('COMMIT');
+    res.json({ ok: true });
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
 

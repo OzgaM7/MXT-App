@@ -17,7 +17,7 @@
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
   const KT_ST = { oferta: 'Oferta', w_realizacji: 'W realizacji', zakonczony: 'Zakończony', rozliczony: 'Rozliczony', anulowany: 'Anulowany' };
   let tab = 'harmonogram', S = null;
-  const st = { q: '', devQ: '', devTyp: '', devSt: '', devPage: 1 };
+  const st = { q: '', barch: '', devQ: '', devTyp: '', devSt: '', devPage: 1 };
   // Przycisk eksportu do Excela (te same filtry co na ekranie); tylko dla ról z uprawnieniem export.xlsx.
   const xl = (list, params = {}) => U().has('export.xlsx')
     ? `<a class="btn btn-secondary btn-sm btn-xl" href="/api/eksport/d1/${list}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v))}" download>Eksport do Excela</a>` : '';
@@ -25,10 +25,13 @@
   async function page(root, path, alive) {
     // Link z powiadomienia lub wyszukiwania może wskazać zakładkę i rekord:
     // ?tab=serwisy&z=<zlecenie>, ?tab=budynki&b=<budynek>, ?tab=harmonogram&m=<montaż>, ?tab=urzadzenia&q=<numer seryjny>.
-    const sp = new URLSearchParams(location.search), want = sp.get('tab');
-    if (want && TABS.some(([k]) => k === want)) tab = want;
+    const sp = U().urlParams(), want = sp.get('tab');
+    // Ranking rentowności to dane finansowe firmy – tylko dla ról finansowych.
+    const tabs = TABS.filter(t => t[0] !== 'rentownosc' || U().has('finance.view'));
+    if (want && tabs.some(([k]) => k === want)) tab = want;
+    if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
     if (tab === 'urzadzenia' && sp.get('q')) { st.devQ = sp.get('q').slice(0, 80); st.devTyp = ''; st.devSt = ''; st.devPage = 1; }
-    const body = U().deptFrame(root, 'Ciepłomierze i podzielniki', TABS, tab, t => { tab = t; reload(); });
+    const body = U().deptFrame(root, 'Ciepłomierze i podzielniki', tabs, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
     // Liczby działu: KPI harmonogramu i liczniki w menu (serwisy do przydzielenia, odczyty po terminie, otwarte reklamacje).
     S = Promise.all([api('d1/podsumowanie'), api('serwisy/podsumowanie').catch(() => null), api('odczyty/podsumowanie').catch(() => null)]);
@@ -70,30 +73,52 @@
       ${field('b-notes', 'Notatki', `<textarea id="b-notes" name="notes" rows="2">${esc(b ? b.notes : '')}</textarea>`)}`,
     { submit: b ? 'Zapisz' : 'Dodaj budynek', wide: true, onSubmit: async f => {
       const d = { customer_id: val(f, 'customer_id') || null, name: val(f, 'name'), address: val(f, 'address'), city: val(f, 'city'), postal_code: val(f, 'postal_code'), units_count: val(f, 'units_count'), heating_type: val(f, 'heating_type'), notes: val(f, 'notes') };
-      b ? await api('d1/budynki/' + b.id, d, 'PATCH') : await api('d1/budynki', d); toast('Budynek zapisany.'); reload();
+      if (b) await api('d1/budynki/' + b.id, { ...d, updated_at: b.updated_at }, 'PATCH');
+      else {
+        try { await api('d1/budynki', d); }
+        catch (e) {
+          if (!(e.data && e.data.duplikat)) throw e;
+          if (!window.confirm(e.data.error + '\n\nOK – dodaj nowy budynek mimo to.\nAnuluj – wróć do formularza.')) throw new Error('Nie dodano – budynek „' + e.data.istniejacy.name + '” już jest w ewidencji.');
+          await api('d1/budynki', { ...d, potwierdz_duplikat: true });
+        }
+      }
+      toast('Budynek zapisany.'); reload();
     } });
     box.querySelector('#b-newc').addEventListener('click', () => B().customerForm(null, () => buildingForm(b, reload), { kind: 'wspolnota', departments: [DEP] }));
   }
   async function buildingCard(id, reload) {
-    const b = await api('d1/budynki/' + id);
+    const b = await api('d1/budynki/' + id), finOk = U().has('finance.view');
     const box = modal(b.name, `<p class="muted">${esc(b.address)}${b.city ? ', ' + esc(b.city) : ''} · ${esc(b.customer_name || 'bez przypisanej wspólnoty')} · ${esc(b.units_count)} lokali${b.heating_type ? ' · ' + esc(b.heating_type) : ''}</p>
-      <div class="kpis kpis-3"><div class="kpi kpi-blue"><span class="kpi-v">${esc(pln(b.przychod))}</span><span class="kpi-l">Przychody</span></div><div class="kpi kpi-neutral"><span class="kpi-v">${esc(pln(b.koszt))}</span><span class="kpi-l">Koszty</span></div>
-        <div class="kpi ${b.przychod - b.koszt >= 0 ? 'kpi-ok' : 'kpi-danger'}"><span class="kpi-v">${esc(pln(b.przychod - b.koszt))}</span><span class="kpi-l">Marża budynku</span></div></div>
+      ${b.archived_at ? `<p class="notice">Budynek w archiwum od ${esc(fd(b.archived_at))} – nie pojawia się na listach, w wyszukiwarce ani przy planowaniu montaży.</p>` : ''}
+      ${finOk ? `<div class="kpis kpis-3"><div class="kpi kpi-blue"><span class="kpi-v">${esc(pln(b.przychod))}</span><span class="kpi-l">Przychody</span></div><div class="kpi kpi-neutral"><span class="kpi-v">${esc(pln(b.koszt))}</span><span class="kpi-l">Koszty</span></div>
+        <div class="kpi ${b.przychod - b.koszt >= 0 ? 'kpi-ok' : 'kpi-danger'}"><span class="kpi-v">${esc(pln(b.przychod - b.koszt))}</span><span class="kpi-l">Marża budynku</span></div></div>` : ''}
       <div id="bc-units"><p class="muted small">Wczytywanie lokali…</p></div>
       <h3 class="panel-sub">Urządzenia (${b.devices.length})</h3>${table(['Numer seryjny', 'Typ', 'Lokalizacja', 'Status', 'Montaż'], b.devices.map(d => `<tr><td><button type="button" class="linkish mono-ink" data-dev="${d.id}">${esc(d.serial_no)}</button></td><td>${esc(DEV[d.type])}</td><td>${esc(d.location || '–')}</td><td>${chip(d.status === 'wadliwe' ? 'deny' : d.status === 'zamontowane' ? 'ok' : 'off', DEV_ST[d.status])}</td><td class="small">${esc(d.installation_number || '–')}</td></tr>`), 'Brak urządzeń.')}
       <h3 class="panel-sub">Montaże</h3>${table(['Numer', 'Termin', 'Ekipa', 'Status', ''], b.installations.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(fd(i.planned_date))}</td><td>${esc(i.crew_name || '–')}</td><td>${chip(i.status, INST_ST[i.status])}</td><td>${i.protocol_document_id ? B().pdfLink('/api/dokumenty/' + i.protocol_document_id + '/plik', 'Protokół') : ''}</td></tr>`), 'Brak montaży.')}
       <h3 class="panel-sub">Reklamacje</h3>${table(['Numer', 'Tytuł', 'Status', 'Zgłoszono'], b.complaints.map(x => `<tr><td>${esc(x.number)}</td><td>${esc(x.title)}</td><td>${chip(x.status, B().CPL_ST[x.status])}</td><td>${esc(fd(x.reported_at))}</td></tr>`), 'Brak reklamacji.')}
-      <h3 class="panel-sub">Rozliczenia</h3>${table(['Data', 'Rodzaj', 'Opis', 'Faktura', { t: 'PLN', num: 1 }], b.finance.map(x => `<tr><td>${esc(fd(x.entry_date))}</td><td>${esc(x.kind === 'przychod' ? 'Przychód' : 'Koszt')}</td><td>${esc(x.description || x.category)}</td><td>${esc(x.invoice_no || '–')}</td><td class="num">${esc(pln(x.amount_pln))}</td></tr>`), 'Brak wpisów.')}
-      <div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="bc-edit">Edytuj budynek</button><button type="button" class="btn btn-secondary btn-sm" id="bc-dev">Dodaj urządzenia</button><button type="button" class="btn btn-secondary btn-sm" id="bc-fin">Dodaj fakturę / koszt</button></div>`, { wide: true });
+      ${finOk ? `<h3 class="panel-sub">Rozliczenia</h3>${table(['Data', 'Rodzaj', 'Opis', 'Faktura', { t: 'PLN', num: 1 }], (b.finance || []).map(x => `<tr><td>${esc(fd(x.entry_date))}</td><td>${esc(x.kind === 'przychod' ? 'Przychód' : 'Koszt')}</td><td>${esc(x.description || x.category)}</td><td>${esc(x.invoice_no || '–')}</td><td class="num">${esc(pln(x.amount_pln))}</td></tr>`), 'Brak wpisów.')}` : ''}
+      <div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="bc-edit">Edytuj budynek</button><button type="button" class="btn btn-secondary btn-sm" id="bc-dev">Dodaj urządzenia</button>${finOk ? '<button type="button" class="btn btn-secondary btn-sm" id="bc-fin">Dodaj fakturę / koszt</button>' : ''}
+        ${b.archived_at ? '<button type="button" class="btn btn-secondary btn-sm" id="bc-restore">Przywróć z archiwum</button>' : '<button type="button" class="btn btn-ghost btn-sm" id="bc-arch">Archiwizuj</button>'}<button type="button" class="btn btn-ghost btn-sm" id="bc-del">Usuń budynek</button></div>`, { wide: true });
     box.querySelector('#bc-edit').addEventListener('click', () => buildingForm(b, reload));
+    const on = (sel, fn) => { const el = box.querySelector(sel); if (el) el.addEventListener('click', () => fn().catch(e => toast(e.message))); };
+    on('#bc-arch', async () => modal('Archiwizować budynek ' + b.name + '?', '<p>Budynek zniknie z list, wyszukiwarki i wyboru przy planowaniu montaży. Historia (montaże, urządzenia, rozliczenia) zostaje, a budynek można przywrócić z archiwum.</p>',
+      { submit: 'Archiwizuj', onSubmit: async () => { await api('d1/budynki/' + b.id + '/archiwizuj', {}); toast('Budynek przeniesiony do archiwum.'); reload(); } }));
+    on('#bc-restore', async () => { await api('d1/budynki/' + b.id + '/przywroc', {}); document.getElementById('modal').hidden = true; toast('Budynek przywrócony.'); reload(); });
+    on('#bc-del', async () => {
+      const rel = await api('d1/budynki/' + b.id + '/powiazania');
+      if (rel.length) { toast('Budynek ma historię (' + rel.map(([l, n]) => l + ': ' + n).join(', ') + ') – nie można go usunąć. Użyj „Archiwizuj”.'); return; }
+      modal('Usunąć budynek ' + b.name + '?', `<p>Budynek <b>${esc(b.name)}</b> nie ma montaży, urządzeń, lokali, serwisów, odczytów ani rozliczeń. Usunięcie jest nieodwracalne.</p>`,
+        { submit: 'Usuń budynek', danger: true, onSubmit: async () => { await api('d1/budynki/' + b.id, null, 'DELETE'); toast('Budynek usunięty.'); reload(); } });
+    });
     box.querySelectorAll('[data-dev]').forEach(x => x.addEventListener('click', () => window.MXT_ERP.deviceCard(x.dataset.dev, () => buildingCard(id, reload))));
     window.MXT_ERP.unitsSection(box.querySelector('#bc-units'), b.id).catch(e => { box.querySelector('#bc-units').innerHTML = `<p class="small txt-danger">${esc(e.message)}</p>`; });
     box.querySelector('#bc-dev').addEventListener('click', () => deviceForm(b.id, reload));
-    box.querySelector('#bc-fin').addEventListener('click', () => B().financeForm({ department_id: DEP, building_id: b.id }, reload));
+    on('#bc-fin', async () => B().financeForm({ department_id: DEP, building_id: b.id }, reload));
   }
   async function budynki(body, reload, alive) {
-    const [sum, list] = await Promise.all([api('d1/podsumowanie'), api('d1/budynki?' + new URLSearchParams(st.q ? { q: st.q } : {}))]);
+    const [sum, list] = await Promise.all([api('d1/podsumowanie'), api('d1/budynki?' + new URLSearchParams({ ...(st.q ? { q: st.q } : {}), ...(st.barch ? { archiwum: '1' } : {}), ...(st.blim ? { limit: st.blim } : {}) }))]);
     if (!alive()) return;
+    const finOk = U().has('finance.view');
     body.innerHTML = `<section class="kpis">
         <div class="kpi kpi-blue"><span class="kpi-v">${esc(sum.budynki)}</span><span class="kpi-l">Budynki (${esc(sum.lokale)} lokali)</span></div>
         <div class="kpi kpi-teal"><span class="kpi-v">${esc(sum.urzadzenia)}</span><span class="kpi-l">Zamontowane urządzenia</span></div>
@@ -102,12 +127,16 @@
         <div class="kpi ${sum.reklamacje_otwarte ? 'kpi-warn' : 'kpi-neutral'}"><span class="kpi-v">${esc(sum.reklamacje_otwarte)}</span><span class="kpi-l">Otwarte reklamacje</span></div>
         <div class="kpi kpi-neutral"><span class="kpi-v">${esc(sum.ekipy)}</span><span class="kpi-l">Aktywne ekipy</span></div></section>
       <form class="toolbar" id="bf"><label class="visually-hidden" for="bq">Szukaj</label><input id="bq" name="q" class="select-sm" placeholder="Szukaj: nazwa, adres, miasto, wspólnota" value="${esc(st.q)}">
+        <label class="visually-hidden" for="b-arch">Archiwum</label><select id="b-arch" name="arch" class="select-sm"><option value="">Aktywne</option><option value="1"${st.barch ? ' selected' : ''}>Archiwum</option></select>
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="b-new">Nowy budynek</button>${xl('budynki')}</form>
-      <section class="panel">${table(['Budynek', 'Wspólnota', { t: 'Lokale', num: 1 }, { t: 'Urządzenia', num: 1 }, { t: 'Montaże', num: 1 }, 'Reklamacje', { t: 'Marża', num: 1 }], list.map(b => `<tr>
+      <section class="panel">${table(['Budynek', 'Wspólnota', { t: 'Lokale', num: 1 }, { t: 'Urządzenia', num: 1 }, { t: 'Montaże', num: 1 }, 'Reklamacje', ...(finOk ? [{ t: 'Marża', num: 1 }] : []), ''], list.map(b => `<tr>
         <td><button type="button" class="linkish" data-b="${b.id}">${esc(b.name)}</button><div class="muted small">${esc(b.address)}${b.city ? ', ' + esc(b.city) : ''}</div></td><td>${esc(b.customer_name || '–')}</td>
         <td class="num">${esc(b.units_count)}</td><td class="num">${esc(b.devices)}</td><td class="num">${esc(b.installations)}</td><td>${b.open_complaints ? chip('warn', b.open_complaints + ' otwarte') : '<span class="muted">–</span>'}</td>
-        <td class="num">${esc(pln(b.przychod - b.koszt))}</td></tr>`), 'Brak budynków. Dodaj pierwszy budynek przyciskiem „Nowy budynek”.')}</section>`;
-    body.querySelector('#bf').addEventListener('submit', e => { e.preventDefault(); st.q = val(e.target, 'q').trim(); reload(); });
+        ${finOk ? `<td class="num">${esc(pln(b.przychod - b.koszt))}</td>` : ''}<td class="nowrap"><button type="button" class="btn btn-ghost btn-sm" data-bedit="${b.id}">Edytuj</button></td></tr>`),
+        st.barch ? 'Archiwum jest puste.' : 'Brak budynków. Dodaj pierwszy budynek przyciskiem „Nowy budynek”.')}</section>`;
+    body.querySelector('#bf').addEventListener('submit', e => { e.preventDefault(); st.q = val(e.target, 'q').trim(); st.barch = val(e.target, 'arch'); st.blim = ''; reload(); });
+    U().moreBar(body, list, n => { st.blim = n; reload(); });
+    body.querySelectorAll('[data-bedit]').forEach(x => x.addEventListener('click', () => buildingForm(list.find(b => b.id === x.dataset.bedit), reload)));
     body.querySelector('#b-new').addEventListener('click', () => buildingForm(null, reload));
     body.querySelectorAll('[data-b]').forEach(x => x.addEventListener('click', () => buildingCard(x.dataset.b, reload)));
   }
@@ -168,13 +197,19 @@
       if (!x && building === '__new') {
         if (!newBuilding) {
           if (!val(f, 'nb_name').trim() || !val(f, 'nb_address').trim()) throw new Error('Podaj nazwę i adres nowego budynku.');
-          newBuilding = await api('d1/budynki', { name: val(f, 'nb_name'), address: val(f, 'nb_address'), city: val(f, 'nb_city'), units_count: val(f, 'nb_units') });
+          const nb = { name: val(f, 'nb_name'), address: val(f, 'nb_address'), city: val(f, 'nb_city'), units_count: val(f, 'nb_units') };
+          try { newBuilding = await api('d1/budynki', nb); }
+          catch (e) {
+            if (!(e.data && e.data.duplikat)) throw e;
+            if (window.confirm(e.data.error + '\n\nOK – użyj istniejącego budynku.\nAnuluj – dodaj nowy budynek mimo to.')) newBuilding = { id: e.data.istniejacy.id };
+            else newBuilding = await api('d1/budynki', { ...nb, potwierdz_duplikat: true });
+          }
         }
         building = newBuilding.id;
       }
       const d = { building_id: building, crew_id: val(f, 'crew_id') || null, project_id: val(f, 'project_id') || null, planned_date: val(f, 'planned_date'), planned_end: val(f, 'planned_end') || null,
         scope: val(f, 'scope'), devices_planned: val(f, 'devices_planned'), materials: matParse(val(f, 'materials')), notes: val(f, 'notes'), allow_clash: allow };
-      if (x) { delete d.building_id; delete d.allow_clash; await api('d1/montaze/' + x.id, d, 'PATCH'); } else await api('d1/montaze', d);
+      if (x) { delete d.building_id; delete d.allow_clash; await api('d1/montaze/' + x.id, { ...d, updated_at: x.updated_at }, 'PATCH'); } else await api('d1/montaze', d);
       toast(x ? 'Zapisano zmiany montażu.' : 'Dodano montaż do harmonogramu.'); reload();
     };
     modal(x ? 'Edytuj montaż ' + x.number : 'Dodaj nowy montaż', `
@@ -466,17 +501,21 @@
 
   // ---------- rozliczenia kontraktów ----------
   async function rozliczenia(body, reload, alive) {
-    const [kt, fin] = await Promise.all([api('d1/kontrakty'), api('finanse?dzial=' + DEP)]);
+    // Rejestr faktur i kosztów działu widzą role finansowe; pozostali – kontrakty i ich rozliczenie.
+    const finOk = U().has('finance.view');
+    const [kt, fin] = await Promise.all([api('d1/kontrakty'), finOk ? api('finanse?dzial=' + DEP) : Promise.resolve([])]);
     if (!alive()) return;
-    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button><button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button>${xl('kontrakty')}${xl('finanse').replace('Eksport do Excela', 'Finanse działu do Excela')}</div>
+    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="k-new">Nowy kontrakt</button>${finOk ? '<button type="button" class="btn btn-secondary" id="f-new">Dodaj fakturę / koszt</button>' : ''}${xl('kontrakty')}${finOk ? xl('finanse').replace('Eksport do Excela', 'Finanse działu do Excela') : ''}</div>
       <section class="panel"><h2 class="panel-title">Kontrakty</h2>${table(['Kontrakt', 'Klient', 'Status', { t: 'Wartość', num: 1 }, { t: 'Zafakturowano', num: 1 }, { t: 'Zapłacono', num: 1 }, { t: 'Koszty', num: 1 }, { t: 'Marża', num: 1 }, 'Montaże'], kt.map(k => `<tr>
         <td><button type="button" class="linkish" data-proj="${k.id}"><b>${esc(k.number)}</b></button><div class="small">${esc(k.title)}</div>${k.document_id ? B().pdfLink('/api/dokumenty/' + k.document_id + '/plik', 'Umowa / harmonogram') : ''}</td><td>${esc(k.customer_name || '–')}</td>
         <td><label class="visually-hidden" for="ks-${k.id}">Status</label><select class="status-select" id="ks-${k.id}" data-ks="${k.id}">${Object.entries(KT_ST).map(([s, v]) => `<option value="${s}"${s === k.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
         <td class="num">${esc(pln(k.value_net))}</td><td class="num">${esc(pln(k.zafakturowano))}${k.do_zafakturowania ? `<div class="small muted">zostało ${esc(pln(k.do_zafakturowania))}</div>` : ''}</td><td class="num">${esc(pln(k.zaplacono))}</td>
         <td class="num">${esc(pln(k.koszt))}</td><td class="num"><b>${esc(pln(k.marza))}</b></td><td class="num">${esc(k.installations_done)}/${esc(k.installations)}</td></tr>`), 'Brak kontraktów.')}</section>
-      <section class="panel"><h2 class="panel-title">Faktury i koszty działu</h2><div id="fin-rows"></div></section>`;
-    const fr = body.querySelector('#fin-rows'); fr.innerHTML = B().financeRows(fin, reload, fr);
-    body.querySelector('#f-new').addEventListener('click', () => B().financeForm({ department_id: DEP }, reload));
+      ${finOk ? '<section class="panel"><h2 class="panel-title">Faktury i koszty działu</h2><div id="fin-rows"></div></section>' : ''}`;
+    if (finOk) {
+      const fr = body.querySelector('#fin-rows'); fr.innerHTML = B().financeRows(fin, reload, fr);
+      body.querySelector('#f-new').addEventListener('click', () => B().financeForm({ department_id: DEP }, reload));
+    }
     body.querySelectorAll('[data-proj]').forEach(b => b.addEventListener('click', () => window.MXT_ERP.projectCard(b.dataset.proj, reload)));
     body.querySelectorAll('[data-ks]').forEach(s => s.addEventListener('change', async () => { try { await api('d1/kontrakty/' + s.dataset.ks, { status: s.value }, 'PATCH'); toast('Status kontraktu zmieniony.'); } catch (e) { toast(e.message); reload(); } }));
     body.querySelector('#k-new').addEventListener('click', async () => {

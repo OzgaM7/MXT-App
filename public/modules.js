@@ -22,7 +22,9 @@
   const AP_ST = { oczekuje: 'Oczekuje', zatwierdzona: 'Zatwierdzona', odrzucona: 'Odrzucona', wykonana: 'Wykonana', wycofana: 'Wycofana' };
   const EV = { utworzenie: 'Zgłoszenie', zmiana: 'Zmiana treści', zatwierdzenie: 'Zatwierdzenie', odrzucenie: 'Odrzucenie', wykonanie: 'Wykonanie', wycofanie: 'Wycofanie' };
   const chip = (cls, txt) => `<span class="chip chip-${esc(cls)}">${esc(txt)}</span>`;
-  const today = () => new Date().toISOString().slice(0, 10);
+  // Data „dziś” wg czasu polskiego (toISOString() daje datę UTC – po północy jeszcze wczorajszą) i „dziś + n dni”.
+  const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(new Date());
+  const dayPlus = n => { const d = new Date(today() + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
   // ---------- nawigacja modułów ----------
   const ROUTES = {
@@ -220,12 +222,12 @@
     ['Command Center', 'dostępny', '/command-center'], ['Zadania (Workflow Engine)', 'dostępny', '/zadania'],
     ['Approval Center', 'dostępny', '/akceptacje', 'approvals.decide'], ['Security & Audit', 'dostępny', '/bezpieczenstwo', 'security.audit'],
     ['AI Board', 'dostępny', '/ai-board'], ['AI Workforce', 'dostępny', '/ai-workforce'], ['Ustawienia AI', 'dostępny', '/ustawienia-ai', 'ai.settings'],
-    ['Finance Intelligence', 'dostępny', '/finanse'], ['CRM', 'dostępny', '/crm'], ['Knowledge Base', 'dostępny', '/wiedza'],
+    ['Finance Intelligence', 'dostępny', '/finanse', 'finance.view'], ['CRM', 'dostępny', '/crm'], ['Knowledge Base', 'dostępny', '/wiedza'],
     ['Ciepłomierze i podzielniki', 'dostępny', '/dzial/podzielniki-i-montaze'], ['Sprzedaż części samochodowych', 'dostępny', '/dzial/sprzedaz-czesci-i-eksport'],
     ['Ubezpieczenia – rejestr polis', 'dostępny', '/dzial/ubezpieczenia', 'insurance.manage'], ['Magazyn i zakupy', 'dostępny', '/magazyn', 'stock.view'], ['Pracownicy', 'dostępny', '/pracownicy', 'employees.manage'],
     ['Pulpit właściciela', 'dostępny', '/pulpit-wlasciciela', 'owner.dashboard'], ['Finanse firmy (należności, zobowiązania, przepływy)', 'dostępny', '/finanse-firmy', 'finance.view'],
     ['Platforma Szkoleniowa', 'dostępny', '/szkolenia'],
-    ['Communication Hub', 'dostępny', '/komunikacja'], ['Business Intelligence', 'dostępny', '/bi'], ['Karta wyników agentów', 'dostępny', '/karta-wynikow'],
+    ['Communication Hub', 'dostępny', '/komunikacja'], ['Business Intelligence', 'dostępny', '/bi', 'finance.view'], ['Karta wyników agentów', 'dostępny', '/karta-wynikow'],
     ['Automatyzacje i dzienny raport', 'dostępny', '/automatyzacje', 'automations.manage']
   ];
   // Skrót Pulpitu właściciela w Command Center: bieżący miesiąc (bez kwot polis w przychodach) i najpilniejsze alerty.
@@ -338,6 +340,7 @@
     else if (taskFilter.scope === 'otwarte') q.set('status', 'otwarte');
     else if (taskFilter.scope === 'zakonczone') q.set('status', 'zakonczone');
     if (taskFilter.department) q.set('department', taskFilter.department);
+    if (taskFilter.limit) q.set('limit', taskFilter.limit);
     const list = await api('tasks?' + q);
     if (!alive()) return;
     const scopes = [['otwarte', 'Otwarte'], ['moje', 'Moje'], ['zakonczone', 'Zakończone'], ['wszystkie', 'Wszystkie']];
@@ -348,9 +351,10 @@
         <select id="tk-dep" class="select-sm"><option value="">Wszystkie działy</option>${M.departments.map(d => `<option value="${d.id}"${taskFilter.department === d.id ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select>
       </div>
       <section class="panel">${list.length ? `<div class="task-list">${list.map(taskRow).join('')}</div>` : '<p class="empty-inline">Brak zadań w tym widoku. Dodaj pierwsze zadanie przyciskiem „Nowe zadanie”.</p>'}</section>`;
-    body.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => { taskFilter.scope = b.dataset.scope; reload(); }));
-    body.querySelector('#tk-dep').addEventListener('change', e => { taskFilter.department = e.target.value; reload(); });
+    body.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => { taskFilter.scope = b.dataset.scope; taskFilter.limit = ''; reload(); }));
+    body.querySelector('#tk-dep').addEventListener('change', e => { taskFilter.department = e.target.value; taskFilter.limit = ''; reload(); });
     bindTaskRows(body, list, reload);
+    moreBar(body, list, n => { taskFilter.limit = n; reload(); });
   }
 
   // ---------- Moje wnioski ----------
@@ -406,7 +410,7 @@
   async function ruleForm(after) {
     const M = await meta();
     const types = Object.entries(M.operations).filter(([, o]) => o.level === 2 && o.reversible);
-    const until = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    const until = dayPlus(30);
     modal('Nowa reguła poziomu 3', `
       <p class="muted">Tylko operacje odwracalne. Operacje powyżej limitu nadal trafią do ręcznej akceptacji.</p>
       ${field('r-type', 'Operacja', `<select id="r-type" name="operation_type">${types.map(([k, o]) => `<option value="${k}">${esc(o.label)}</option>`).join('')}</select>`)}
@@ -996,7 +1000,58 @@
     holder.querySelector('[data-pop]').addEventListener('click', load);
   }
 
-  window.MXT_UI = { esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today, searchOpen, savedViews };
+  // Parametry adresu dla ekranu działu. „tab” z linku (powiadomienie, wyszukiwarka) działa raz: usuwany z adresu od razu,
+  // przed wczytaniem danych – inaczej po błędzie wczytywania każde przełączenie zakładki wracałoby do zakładki z linku.
+  function urlParams() {
+    const sp = new URLSearchParams(location.search);
+    if (sp.has('tab')) { const q = new URLSearchParams(sp); q.delete('tab'); history.replaceState(history.state, '', location.pathname + (q.toString() ? '?' + q : '')); }
+    return sp;
+  }
+  // Lista ucięta po stronie serwera (domyślna porcja): „Pokazano X z Y” i „Pokaż więcej” – zamiast cichego znikania starszych rekordów.
+  function moreBar(host, list, onMore) {
+    const total = list && list.length ? Number(list[0].total_count) || 0 : 0;
+    if (!host || !(total > list.length)) return;
+    const d = document.createElement('div'); d.className = 'list-more';
+    d.innerHTML = `<span>Pokazano ${list.length} z ${total}. Zawęź wyszukiwanie albo</span> <button type="button" class="btn btn-secondary btn-sm">Pokaż więcej</button>`;
+    d.querySelector('button').addEventListener('click', () => onMore(Math.min(list.length * 2, 20000)));
+    host.append(d);
+  }
+  // Sortowanie tabel po kliknięciu nagłówka kolumny (rosnąco / malejąco), bez ponownego pobierania danych.
+  // Liczby i kwoty w formacie polskim, daty DD.MM.RRRR i RRRR-MM-DD, tekst wg alfabetu polskiego; puste na końcu.
+  const sortVal = td => {
+    const s = (td ? td.textContent : '').replace(/[\s ]+/g, ' ').trim();
+    if (!s || s === '–' || s === '-') return null;
+    let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:,? (\d{1,2}):(\d{2}))?/);
+    if (m) return { n: Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)) };
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return { n: Date.UTC(+m[1], +m[2] - 1, +m[3]) };
+    const c = s.replace(/ /g, '');
+    m = c.match(/^([-−]?\d+(?:\.\d{3})*(?:,\d+)?|[-−]?\d+(?:\.\d+)?)(?:zł|PLN|EUR|USD|GBP|%|h|szt\.?|dni|dzień|\/h)?$/i);
+    if (m) return { n: Number(m[1].replace('−', '-').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) };
+    return { t: s.toLocaleLowerCase('pl') };
+  };
+  document.addEventListener('click', e => {
+    const th = e.target.closest('table.table > thead th');
+    if (!th || e.target.closest('button, a, input, select') || !th.textContent.trim()) return;
+    const table = th.closest('table'), tbody = table.tBodies[0];
+    if (!tbody || table.closest('[data-nosort]')) return;
+    const rows = [...tbody.rows];
+    if (rows.length < 2 || rows.some(r => [...r.cells].some(c => c.colSpan > 1))) return;   // tabele z wierszami grupującymi – bez sortowania
+    const idx = [...th.parentElement.cells].indexOf(th), dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
+    th.parentElement.querySelectorAll('th[aria-sort]').forEach(x => x.removeAttribute('aria-sort'));
+    th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+    const key = new Map(rows.map(r => [r, sortVal(r.cells[idx])]));
+    rows.sort((a, b) => {
+      const x = key.get(a), y = key.get(b);
+      if (!x || !y) return !x && !y ? 0 : !x ? 1 : -1;
+      if ('n' in x && 'n' in y) return (x.n - y.n) * dir;
+      if ('n' in x !== 'n' in y) return ('n' in x ? -1 : 1) * dir;
+      return x.t.localeCompare(y.t, 'pl', { numeric: true }) * dir;
+    });
+    tbody.append(...rows);
+  });
+
+  window.MXT_UI = { dayPlus, moreBar, urlParams, esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today, searchOpen, savedViews };
 
   window.MXT_MODULES = { routes: ROUTES, render, menu, register };
 })();

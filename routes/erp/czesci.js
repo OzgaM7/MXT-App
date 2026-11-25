@@ -8,7 +8,8 @@ const { audit } = require('../../lib/audit');
 const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, listLimit } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const use = requirePerm('parts.sell');
@@ -49,10 +50,10 @@ r.get('/czesci/zamowienia', use, wrap(async (req, res) => {
   if (req.query.klient) { p.push(V.uuid(req.query.klient)); w.push(`o.customer_id = $${p.length}`); }
   if (req.query.q) { p.push('%' + String(req.query.q).trim().slice(0, 80).replace(/[\\%_]/g, m => '\\' + m) + '%'); w.push(`(o.number ILIKE $${p.length} OR c.name ILIKE $${p.length} OR o.vehicle ILIKE $${p.length} OR o.invoice_no ILIKE $${p.length})`); }
   if (req.query.naleznosci === '1') w.push(`o.status = 'zafakturowane' AND o.paid_at IS NULL`);
-  res.json((await pool.query(`SELECT o.id, o.number, o.status, o.order_date, o.vehicle, o.total_net::float AS total_net, o.total_cost::float AS total_cost, o.invoice_no, o.invoice_date, o.due_date, o.paid_at,
+  res.json((await pool.query(`SELECT count(*) OVER()::int AS total_count, o.id, o.number, o.status, o.order_date, o.vehicle, o.total_net::float AS total_net, o.total_cost::float AS total_cost, o.invoice_no, o.invoice_date, o.due_date, o.paid_at,
       c.name AS customer_name, o.customer_id, (o.status = 'zafakturowane' AND o.paid_at IS NULL AND o.due_date < ${TODAY}) AS overdue,
       (SELECT count(*)::int FROM part_order_lines l WHERE l.order_id = o.id) AS lines
-    FROM part_orders o JOIN customers c ON c.id = o.customer_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY o.created_at DESC LIMIT 500`, p)).rows.map(o => ({ ...o, status_label: ST[o.status] })));
+    FROM part_orders o JOIN customers c ON c.id = o.customer_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY o.created_at DESC LIMIT ${listLimit(req, 500)}`, p)).rows.map(o => ({ ...o, status_label: ST[o.status] })));
 }));
 r.get('/czesci/zamowienia/:id', idParam, use, wrap(async (req, res) => {
   const o = await load(pool, req.params.id);
@@ -135,8 +136,8 @@ r.post('/czesci/zamowienia/:id/wydaj', idParam, use, wrap(async (req, res) => {
 // ---------- faktura: przychód działu (należność) + wpis do historii sprzedaży ----------
 r.post('/czesci/zamowienia/:id/faktura', idParam, requirePerm('parts.sell'), wrap(async (req, res) => {
   const b = req.body || {}, invoice = V.str(b.invoice_no, 60, true, 'Numer faktury');
-  const date = V.date(b.invoice_date, 'Data faktury') || new Date().toISOString().slice(0, 10);
-  const due = V.date(b.due_date, 'Termin płatności') || new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const date = V.date(b.invoice_date, 'Data faktury') || plToday();
+  const due = V.date(b.due_date, 'Termin płatności') || plToday(14);
   if (due < date) throw bad(400, 'Termin płatności przed datą faktury.');
   const o = await tx(async c => {
     const x = await load(c, req.params.id, true);
@@ -155,7 +156,7 @@ r.post('/czesci/zamowienia/:id/faktura', idParam, requirePerm('parts.sell'), wra
   res.json(o);
 }));
 r.post('/czesci/zamowienia/:id/zaplata', idParam, use, wrap(async (req, res) => {
-  const paid = V.date((req.body || {}).paid_at, 'Data zapłaty') || new Date().toISOString().slice(0, 10);
+  const paid = V.date((req.body || {}).paid_at, 'Data zapłaty') || plToday();
   const o = await tx(async c => {
     const x = await load(c, req.params.id, true);
     if (x.status !== 'zafakturowane') throw bad(409, 'Zapłatę rejestruje się dla zafakturowanego zamówienia.');
@@ -222,7 +223,7 @@ r.post('/czesci/zamowienia/:id/reklamacja', idParam, use, wrap(async (req, res) 
 
 // ---------- analityka sprzedaży ----------
 r.get('/czesci/analityka', use, wrap(async (req, res) => {
-  const od = V.date(req.query.od, 'Od') || new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10), dd = V.date(req.query.do, 'Do') || '2999-12-31';
+  const od = V.date(req.query.od, 'Od') || plToday(-365), dd = V.date(req.query.do, 'Do') || '2999-12-31';
   const stale = Math.round(V.num(req.query.zalegajace_dni, 30, 3650, 'Dni', 180));
   const [sum, months, top, slow, customers, rec] = await Promise.all([
     pool.query(`SELECT count(*)::int AS zamowienia, coalesce(sum(total_net), 0)::float AS przychod, coalesce(sum(total_cost), 0)::float AS koszt

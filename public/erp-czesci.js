@@ -16,8 +16,8 @@
   const VEH = { '': '–', osobowe: 'Osobowe', ciezarowe: 'Ciężarowe', uniwersalne: 'Uniwersalne' };
   const td = (label, html, cls) => `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ''}>${html}</td>`;
   const ctable = (head, rows, empty) => rows.length ? `<div class="table-wrap"><table class="table table-cards"><thead><tr>${head.map(h => `<th${h.num ? ' class="num"' : ''}>${esc(h.t || h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<p class="empty-inline">${esc(empty)}</p>`;
-  const today = () => new Date().toISOString().slice(0, 10);
-  const st = { q: '', status: '', naleznosci: '' }, pr = { q: '' }, an = { od: '', do: '' };
+  const today = () => U().today();
+  const st = { q: '', status: '', naleznosci: '', limit: '' }, pr = { q: '' }, an = { od: '', do: '' }, po = { limit: '' };
 
   // ======================= zamówienia =======================
   async function zamowienia(body, reload, alive) {
@@ -35,7 +35,8 @@
         ${td('Klient', esc(o.customer_name))}${td('Pojazd', esc(o.vehicle || '–'))}${td('Wartość', esc(pln(o.total_net)), 'num')}${td('Status', chip(OST_CLS[o.status], o.status === 'zafakturowane' && o.paid_at ? 'Zapłacone' : OST[o.status]))}
         ${td('Faktura', o.invoice_no ? `${esc(o.invoice_no)}<div class="small ${o.overdue ? 'txt-danger' : 'muted'}">${o.paid_at ? 'zapłacona ' + esc(fd(o.paid_at)) : 'termin ' + esc(fd(o.due_date))}</div>` : '–')}</tr>`),
       'Brak zamówień. Dodaj zamówienie przyciskiem „Nowe zamówienie”.')}</section>`;
-    body.querySelector('#zf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; st.q = val(f, 'q').trim(); st.status = val(f, 'status'); st.naleznosci = f.elements.naleznosci.checked ? '1' : ''; reload(); });
+    body.querySelector('#zf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; st.q = val(f, 'q').trim(); st.status = val(f, 'status'); st.naleznosci = f.elements.naleznosci.checked ? '1' : ''; st.limit = ''; reload(); });
+    U().moreBar(body, list, n => { st.limit = n; reload(); });
     body.querySelector('#zo-new').addEventListener('click', () => orderForm(null, reload));
     body.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => orderCard(b.dataset.o, reload)));
   }
@@ -103,7 +104,7 @@
     on('issue', () => run(() => api('czesci/zamowienia/' + id + '/wydaj', {}), 'Towar wydany (WZ).'));
     on('paid', () => modal('Zapłata – ' + o.number, field('pd-d', 'Data zapłaty', `<input id="pd-d" name="d" type="date" value="${today()}">`), { submit: 'Zapisz zapłatę', onSubmit: async f => { await api('czesci/zamowienia/' + id + '/zaplata', { paid_at: val(f, 'd') }); toast('Zapłata zapisana.'); refresh(); } }));
     on('invoice', () => modal('Faktura – ' + o.number, `<div class="field-row">${field('iv-n', 'Numer faktury', '<input id="iv-n" name="n" required maxlength="60">')}${field('iv-d', 'Data', `<input id="iv-d" name="d" type="date" value="${today()}">`)}
-      ${field('iv-t', 'Termin płatności', `<input id="iv-t" name="t" type="date" value="${new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)}">`)}</div><p class="muted small">Kwota ${esc(pln(o.total_net))} trafi do przychodów działu i należności klienta.</p>`,
+      ${field('iv-t', 'Termin płatności', `<input id="iv-t" name="t" type="date" value="${U().dayPlus(14)}">`)}</div><p class="muted small">Kwota ${esc(pln(o.total_net))} trafi do przychodów działu i należności klienta.</p>`,
     { submit: 'Zapisz fakturę', onSubmit: async f => { await api('czesci/zamowienia/' + id + '/faktura', { invoice_no: val(f, 'n'), invoice_date: val(f, 'd'), due_date: val(f, 't') }); toast('Faktura zapisana.'); refresh(); } }));
     on('cancel', () => modal('Anulować zamówienie?', field('cn-r', 'Powód', '<input id="cn-r" name="r" required maxlength="500">'), { submit: 'Anuluj zamówienie', danger: true, onSubmit: async f => { await api('czesci/zamowienia/' + id + '/anuluj', { powod: val(f, 'r') }); toast('Zamówienie anulowane, rezerwacje zwolnione.'); refresh(); } }));
     on('complaint', () => modal('Reklamacja – ' + o.number, `${field('cp-t', 'Tytuł', '<input id="cp-t" name="t" required maxlength="200">')}${field('cp-d', 'Opis', '<textarea id="cp-d" name="d" rows="3"></textarea>')}`,
@@ -154,7 +155,7 @@
 
   // ======================= zamówienia zakupu (moduł Magazyn) =======================
   async function zakupy(body, reload, alive) {
-    const list = await api('zakupy');
+    const list = await api('zakupy' + (po.limit ? '?limit=' + po.limit : ''));
     if (!alive()) return;
     const can = has('purchases.manage');
     body.innerHTML = `<p data-ws-sub>${list.filter(o => ['szkic', 'zamowione', 'czesciowo'].includes(o.status)).length} otwartych zamówień do dostawców</p>
@@ -166,19 +167,26 @@
     const n = body.querySelector('#po-new'); if (n) n.addEventListener('click', () => poForm(reload));
     const p = body.querySelector('#po-prop'); if (p) p.addEventListener('click', async () => { try { const r = await api('zakupy/propozycje', {}); toast(r.created.length ? 'Utworzono szkice: ' + r.created.join(', ') : 'Brak pozycji poniżej minimum z przypisanym dostawcą.'); reload(); } catch (e) { toast(e.message); } });
     body.querySelectorAll('[data-po]').forEach(b => b.addEventListener('click', () => poCard(b.dataset.po, reload)));
+    U().moreBar(body, list, n => { po.limit = n; reload(); });
   }
-  async function poForm(after) {
+  // Nowe zamówienie albo edycja szkicu (dostawca bez zmian – zmiana dostawcy = nowe zamówienie).
+  async function poForm(after, o) {
     const [sup, items] = await Promise.all([api('magazyn/dostawcy'), api('magazyn/pozycje')]);
-    const line = i => `<div class="field-row is-line">${field('pl-i' + i, i ? 'Pozycja ' + (i + 1) : 'Pozycja', `<select id="pl-i${i}" name="item${i}"${i ? '' : ' required'}><option value="">– wybierz –</option>${items.map(x => `<option value="${esc(x.id)}" data-price="${x.purchase_price}">${esc(x.sku + ' · ' + x.name + ' (stan ' + num(x.qty) + ')')}</option>`).join('')}</select>`)}
-      ${field('pl-q' + i, 'Ilość', `<input id="pl-q${i}" name="qty${i}" type="number" min="0.001" step="0.001">`)}${field('pl-p' + i, 'Cena zakupu netto', `<input id="pl-p${i}" name="price${i}" type="number" min="0" step="0.01">`)}</div>`;
-    modal('Nowe zamówienie do dostawcy', `<div class="field-row">${field('po-s', 'Dostawca', `<select id="po-s" name="sup" required><option value="">– wybierz –</option>${sup.filter(s => s.is_active).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select>`)}
-      ${field('po-e', 'Planowana dostawa', '<input id="po-e" name="exp" type="date">')}</div>${[0, 1, 2, 3, 4, 5].map(line).join('')}${field('po-n', 'Uwagi', '<input id="po-n" name="note" maxlength="1000">')}`,
-    { submit: 'Zapisz szkic', wide: true, onSubmit: async f => {
-      const lines = [0, 1, 2, 3, 4, 5].map(i => ({ item_id: val(f, 'item' + i), qty: val(f, 'qty' + i), unit_price: val(f, 'price' + i) })).filter(l => l.item_id && l.qty);
-      const x = await api('zakupy', { supplier_id: val(f, 'sup'), expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines }); toast('Szkic ' + x.number + ' zapisany.'); after();
+    const n = Math.max(6, o ? o.lines.length + 2 : 0), idx = [...Array(n).keys()], L = i => (o && o.lines[i]) || {};
+    const line = i => `<div class="field-row is-line">${field('pl-i' + i, i ? 'Pozycja ' + (i + 1) : 'Pozycja', `<select id="pl-i${i}" name="item${i}"${i ? '' : ' required'}><option value="">– wybierz –</option>${items.map(x => `<option value="${esc(x.id)}" data-price="${x.purchase_price}"${L(i).item_id === x.id ? ' selected' : ''}>${esc(x.sku + ' · ' + x.name + ' (stan ' + num(x.qty) + ')')}</option>`).join('')}</select>`)}
+      ${field('pl-q' + i, 'Ilość', `<input id="pl-q${i}" name="qty${i}" type="number" min="0.001" step="0.001" value="${esc(L(i).qty ?? '')}">`)}${field('pl-p' + i, 'Cena zakupu netto', `<input id="pl-p${i}" name="price${i}" type="number" min="0" step="0.01" value="${esc(L(i).unit_price ?? '')}">`)}</div>`;
+    modal(o ? 'Edytuj szkic ' + o.number : 'Nowe zamówienie do dostawcy', `<div class="field-row">${o ? field('po-s', 'Dostawca', `<input id="po-s" value="${esc(o.supplier_name)}" disabled>`)
+      : field('po-s', 'Dostawca', `<select id="po-s" name="sup" required><option value="">– wybierz –</option>${sup.filter(s => s.is_active).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select>`)}
+      ${field('po-e', 'Planowana dostawa', `<input id="po-e" name="exp" type="date" value="${esc(o && o.expected_date ? String(o.expected_date).slice(0, 10) : '')}">`)}</div>${idx.map(line).join('')}${field('po-n', 'Uwagi', `<input id="po-n" name="note" maxlength="1000" value="${esc(o ? o.note || '' : '')}">`)}
+      ${o ? '<p class="muted small">Pozycję usuwasz, wybierając „– wybierz –”. Zmiana dostawcy: anuluj szkic i utwórz nowe zamówienie.</p>' : ''}`,
+    { submit: o ? 'Zapisz zmiany' : 'Zapisz szkic', wide: true, onSubmit: async f => {
+      const lines = idx.map(i => ({ item_id: val(f, 'item' + i), qty: val(f, 'qty' + i), unit_price: val(f, 'price' + i) })).filter(l => l.item_id && l.qty);
+      if (o) { await api('zakupy/' + o.id, { expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines }, 'PUT'); toast('Szkic ' + o.number + ' zapisany.'); }
+      else { const x = await api('zakupy', { supplier_id: val(f, 'sup'), expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines }); toast('Szkic ' + x.number + ' zapisany.'); }
+      after();
     } });
     const box = document.getElementById('modal-box');
-    for (let i = 0; i < 6; i++) box.querySelector('#pl-i' + i).addEventListener('change', e => { const o = e.target.selectedOptions[0]; const p = box.querySelector('#pl-p' + i); if (o && o.dataset.price && !p.value) p.value = o.dataset.price; });
+    for (const i of idx) box.querySelector('#pl-i' + i).addEventListener('change', e => { const op = e.target.selectedOptions[0]; const p = box.querySelector('#pl-p' + i); if (op && op.dataset.price && !p.value) p.value = op.dataset.price; });
   }
   async function poCard(id, after) {
     const o = await api('zakupy/' + id);
@@ -186,12 +194,14 @@
     const box = modal(`Zamówienie zakupu ${o.number}`, `<p class="muted">${esc(o.supplier_name)} · magazyn ${esc(o.warehouse)} · ${chip(PST_CLS[o.status], PST[o.status])}${o.expected_date ? ' · dostawa ' + esc(fd(o.expected_date)) : ''}</p>
       ${ctable(['Pozycja', { t: 'Zamówiono', num: 1 }, { t: 'Przyjęto', num: 1 }, { t: 'Cena', num: 1 }, { t: 'Wartość', num: 1 }], o.lines.map(l => `<tr>${td('Pozycja', esc(l.sku + ' · ' + l.name))}${td('Zamówiono', esc(num(l.qty)) + ' ' + esc(l.unit), 'num')}${td('Przyjęto', esc(num(l.received_qty)), 'num')}${td('Cena', esc(pln(l.unit_price)), 'num')}${td('Wartość', esc(pln(l.qty * l.unit_price)), 'num')}</tr>`), '')}
       ${o.receipts.length ? `<h3 class="panel-sub">Przyjęcia (PZ)</h3><ul class="tool-list">${o.receipts.map(x => `<li><b>${esc(x.number)}</b> · ${esc(fd(x.doc_date))} · ${esc(pln(x.total_value))}${x.invoice_no ? ' · FV ' + esc(x.invoice_no) : ''} · ${x.paid_at ? 'zapłacona' : 'do zapłaty'}</li>`).join('')}</ul>` : ''}
-      <div class="ap-actions">${o.status === 'szkic' && has('purchases.manage') ? '<button type="button" class="btn btn-primary btn-sm" data-a="order">Wyślij do dostawcy</button>' : ''}
+      ${o.note ? `<p class="muted">${esc(o.note)}</p>` : ''}
+      <div class="ap-actions">${o.status === 'szkic' && has('purchases.manage') ? '<button type="button" class="btn btn-primary btn-sm" data-a="order">Wyślij do dostawcy</button><button type="button" class="btn btn-secondary btn-sm" data-a="edit">Edytuj szkic</button>' : ''}
         ${['zamowione', 'czesciowo'].includes(o.status) && has('stock.manage') ? '<button type="button" class="btn btn-primary btn-sm" data-a="receive">Przyjmij dostawę</button>' : ''}
         ${['szkic', 'zamowione'].includes(o.status) && has('purchases.manage') ? '<button type="button" class="btn btn-ghost btn-sm" data-a="cancel">Anuluj</button>' : ''}</div>`, { wide: true });
     const on = (k, fn) => { const b = box.querySelector(`[data-a="${k}"]`); if (b) b.addEventListener('click', fn); };
     on('order', async () => { try { await api('zakupy/' + id + '/zamow', {}); toast('Zamówienie wysłane do dostawcy (status „zamówione”).'); refresh(); } catch (e) { toast(e.message); } });
     on('cancel', async () => { try { await api('zakupy/' + id + '/anuluj', {}); toast('Zamówienie anulowane.'); refresh(); } catch (e) { toast(e.message); } });
+    on('edit', () => poForm(refresh, o));
     on('receive', () => modal('Przyjęcie dostawy – ' + o.number, `${o.lines.filter(l => l.qty > l.received_qty).map(l => field('rc-' + l.id, `${l.sku} · ${l.name} (zostało ${num(l.qty - l.received_qty)} ${l.unit})`, `<input id="rc-${esc(l.id)}" name="q:${esc(l.id)}" type="number" min="0" step="0.001" value="${l.qty - l.received_qty}">`)).join('')}
       <div class="field-row">${field('rc-f', 'Faktura dostawcy', '<input id="rc-f" name="inv" maxlength="60">')}${field('rc-d', 'Termin płatności', '<input id="rc-d" name="due" type="date">')}</div>
       <p class="muted small">Powstaje dokument PZ (stan i średni koszt) oraz zobowiązanie wobec dostawcy (termin domyślnie z warunków dostawcy).</p>`,

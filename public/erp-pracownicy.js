@@ -13,9 +13,9 @@
   const TABS = [['kartoteka', 'Kartoteka i obciążenie', '', 'Kartoteka'], ['nieobecnosci', 'Nieobecności', '', 'Nieobecności'], ['czas', 'Czas pracy zespołu', '', 'Czas pracy']];
   const td = (label, html, cls) => `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ''}>${html}</td>`;
   const ctable = (head, rows, empty) => rows.length ? `<div class="table-wrap"><table class="table table-cards"><thead><tr>${head.map(x => `<th${x.num ? ' class="num"' : ''}>${esc(x.t || x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<p class="empty-inline">${esc(empty)}</p>`;
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');   // data lokalna, nie UTC
   let tab = 'kartoteka';
-  const st = { od: iso(new Date(Date.now() - 30 * 864e5)), osoba: '' };
+  const st = { od: iso(new Date(Date.now() - 30 * 864e5)), osoba: '', wyl: false };
 
   async function page(root, path, alive) {
     const body = U().deptFrame(root, 'Pracownicy', TABS, tab, t => { tab = t; reload(); });
@@ -32,23 +32,51 @@
   async function kartoteka(body, reload, alive) {
     const d = await api('pracownicy?od=' + st.od);
     if (!alive()) return;
-    const act = d.rows.filter(x => x.is_active);
+    const act = d.rows.filter(x => x.is_active), off = d.rows.length - act.length, adm = has('users.manage');
+    const rows = st.wyl ? d.rows : act;
     body.innerHTML = `<p data-ws-sub>${act.length} aktywnych kont · godziny od ${esc(fd(d.from))} · ${act.filter(x => x.nieobecnosc).length} nieobecnych dziś</p>
-      <section class="panel">${ctable(['Pracownik', 'Rola', 'Stanowisko', { t: 'Stawka', num: 1 }, { t: 'Serwisy', num: 1 }, { t: 'Montaże 14 dni', num: 1 }, { t: 'Odczyty 30 dni', num: 1 }, { t: 'Godziny', num: 1 }, 'Dziś'], d.rows.map(x => `<tr class="${x.is_active ? '' : 'row-off'}">
+      ${adm ? '<div data-ws-actions hidden><button type="button" class="btn btn-primary" id="e-new">Nowe konto pracownika</button></div>' : ''}
+      ${off ? `<label class="toggle"><input type="checkbox" id="e-off"${st.wyl ? ' checked' : ''}> Pokaż wyłączone konta (${off})</label>` : ''}
+      <section class="panel">${ctable(['Pracownik', 'Rola', 'Stanowisko', { t: 'Stawka', num: 1 }, { t: 'Serwisy', num: 1 }, { t: 'Montaże 14 dni', num: 1 }, { t: 'Odczyty 30 dni', num: 1 }, { t: 'Godziny', num: 1 }, 'Dziś', ''], rows.map(x => `<tr class="${x.is_active ? '' : 'row-off'}">
         ${td('Pracownik', `<button type="button" class="linkish" data-e="${esc(x.id)}">${esc(x.full_name || x.login)}</button><div class="muted small">${esc([x.login, x.phone].filter(Boolean).join(' · '))}</div>`)}
         ${td('Rola', esc([x.role, ...(x.extra_roles || [])].map(r => d.roles[r] || r).join(' + ')))}${td('Stanowisko', esc(x.position || '–') + (x.employment ? `<div class="muted small">${esc(EMP[x.employment])}</div>` : ''))}
         ${td('Stawka', x.hourly_rate != null ? esc(pln(x.hourly_rate)) + '/h' : '<span class="muted">–</span>', 'num')}${td('Serwisy otwarte', esc(x.serwisy_otwarte), 'num')}${td('Montaże 14 dni', esc(x.montaze_14d), 'num')}
-        ${td('Odczyty 30 dni', esc(x.odczyty_30d), 'num')}${td('Godziny', esc(h(x.godziny)), 'num')}${td('Dziś', x.nieobecnosc ? chip('warn', `${ABS[x.nieobecnosc.kind]} do ${fd(x.nieobecnosc.date_to)}`) : x.is_active ? chip('ok', 'dostępny') : chip('off', 'konto wyłączone'))}</tr>`), 'Brak kont.')}</section>
-      <p class="muted small">Konta, role i dane logowania zmienia administrator w „Konta i role”. Tu: dane kadrowe do planowania i kosztu robocizny (stawka × godziny w projektach).</p>`;
+        ${td('Odczyty 30 dni', esc(x.odczyty_30d), 'num')}${td('Godziny', esc(h(x.godziny)), 'num')}${td('Dziś', x.nieobecnosc ? chip('warn', `${ABS[x.nieobecnosc.kind]} do ${fd(x.nieobecnosc.date_to)}`) : x.is_active ? chip('ok', 'dostępny') : chip('off', 'konto wyłączone'))}
+        ${td('', `<button type="button" class="btn btn-ghost btn-sm" data-e="${esc(x.id)}">Edytuj</button>`, 'td-actions')}</tr>`), 'Brak kont.')}</section>
+      <p class="muted small">${adm ? 'Edytuj: dane kadrowe (stanowisko, stawka, forma zatrudnienia) oraz konto – imię i nazwisko, kontakt, role, wyłączenie konta. Konto bez historii (np. założone przez pomyłkę) można usunąć; konto z historią się wyłącza, a wpisy pracownika zostają.'
+        : 'Edytuj: dane kadrowe do planowania i kosztu robocizny (stawka × godziny w projektach). Konta, role i wyłączanie kont – administrator.'}</p>`;
+    const accForm = async x => {
+      const [M, inst] = await Promise.all([U().meta(), api('konta/instalatorzy')]);
+      window.MXT_KONTA.accountForm(x, M, inst, reload);
+    };
+    const nb = body.querySelector('#e-new'); if (nb) nb.addEventListener('click', () => accForm(null).catch(e => toast(e.message)));
+    const ob = body.querySelector('#e-off'); if (ob) ob.addEventListener('change', () => { st.wyl = ob.checked; reload(); });
     body.querySelectorAll('[data-e]').forEach(b => b.addEventListener('click', () => {
-      const x = d.rows.find(r => r.id === b.dataset.e);
-      modal('Kartoteka – ' + (x.full_name || x.login), `<div class="field-row">${field('e-p', 'Stanowisko', `<input id="e-p" name="position" maxlength="100" value="${esc(x.position || '')}">`)}
+      const x = d.rows.find(r => r.id === b.dataset.e), self = x.id === U().me().id;
+      const box = modal('Pracownik – ' + (x.full_name || x.login), `${adm ? `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="e-acc">Edytuj konto (dane, kontakt, role)</button>
+          ${self ? '' : `<button type="button" class="btn btn-secondary btn-sm" id="e-tog">${x.is_active ? 'Wyłącz konto' : 'Włącz konto'}</button><button type="button" class="btn btn-ghost btn-sm" id="e-del">Usuń konto</button>`}</div>` : ''}
+        <h3 class="panel-title">Dane kadrowe</h3>
+        <div class="field-row">${field('e-p', 'Stanowisko', `<input id="e-p" name="position" maxlength="100" value="${esc(x.position || '')}">`)}
         ${field('e-r', 'Koszt godziny pracy (PLN)', `<input id="e-r" name="hourly_rate" type="number" min="0" step="0.01" value="${esc(x.hourly_rate ?? '')}">`)}</div>
         <div class="field-row">${field('e-e', 'Forma zatrudnienia', `<select id="e-e" name="employment">${Object.entries(EMP).map(([k, v]) => `<option value="${k}"${(x.employment || '') === k ? ' selected' : ''}>${v}</option>`).join('')}</select>`)}
           ${field('e-h', 'Data zatrudnienia', `<input id="e-h" name="hired_at" type="date" value="${esc(x.hired_at ? String(x.hired_at).slice(0, 10) : '')}">`)}</div>
         ${field('e-n', 'Notatki kadrowe', `<textarea id="e-n" name="hr_notes" rows="3" maxlength="2000">${esc(x.hr_notes || '')}</textarea>`)}
         <p class="muted small">Stawka liczy koszt robocizny dla nowych wpisów czasu pracy (wcześniejsze wpisy zachowują stawkę z dnia wpisu).</p>`,
-      { submit: 'Zapisz', onSubmit: async f => { await api('pracownicy/' + x.id, { position: val(f, 'position'), hourly_rate: val(f, 'hourly_rate'), employment: val(f, 'employment'), hired_at: val(f, 'hired_at') || null, hr_notes: val(f, 'hr_notes') }, 'PATCH'); toast('Kartoteka zapisana.'); reload(); } });
+      { submit: 'Zapisz dane kadrowe', wide: adm, onSubmit: async f => { await api('pracownicy/' + x.id, { position: val(f, 'position'), hourly_rate: val(f, 'hourly_rate'), employment: val(f, 'employment'), hired_at: val(f, 'hired_at') || null, hr_notes: val(f, 'hr_notes') }, 'PATCH'); toast('Kartoteka zapisana.'); reload(); } });
+      const on = (sel, fn) => { const el = box.querySelector(sel); if (el) el.addEventListener('click', () => fn().catch(e => toast(e.message))); };
+      on('#e-acc', () => accForm(x));
+      on('#e-tog', async () => {
+        if (x.is_active) {
+          modal('Wyłączyć konto ' + x.login + '?', '<p>Pracownik zostanie wylogowany ze wszystkich urządzeń i nie zaloguje się ponownie. Jego wpisy (montaże, serwisy, czas pracy, dokumenty) zostają. Konto można później włączyć.</p>',
+            { submit: 'Wyłącz konto', danger: true, onSubmit: async () => { await api('konta/' + x.id, { is_active: false }, 'PATCH'); toast('Konto wyłączone i wylogowane.'); reload(); } });
+        } else { await api('konta/' + x.id, { is_active: true }, 'PATCH'); document.getElementById('modal').hidden = true; toast('Konto włączone.'); reload(); }
+      });
+      on('#e-del', async () => {
+        const hist = await api('konta/' + x.id + '/historia');
+        if (hist.length) { toast('Konto ma historię (' + hist.map(([l, n]) => l + ': ' + n).join(', ') + ') – nie można go usunąć. Użyj „Wyłącz konto”: wpisy pracownika zostaną.'); return; }
+        modal('Usunąć konto ' + x.login + '?', `<p>Konto <b>${esc(x.full_name || x.login)}</b> nie ma żadnych wpisów w systemie. Usunięcie jest nieodwracalne.</p>`,
+          { submit: 'Usuń konto', danger: true, onSubmit: async () => { await api('konta/' + x.id, null, 'DELETE'); toast('Konto usunięte.'); reload(); } });
+      });
     }));
   }
 

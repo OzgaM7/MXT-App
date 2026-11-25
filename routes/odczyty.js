@@ -48,11 +48,11 @@ r.get('/budynki', use, wrap(async (req, res) => {
   if (req.query.q) { p.push('%' + String(req.query.q).slice(0, 80) + '%'); w.push(`(b.name ILIKE $1 OR b.address ILIKE $1 OR b.city ILIKE $1 OR c.name ILIKE $1)`); }
   const q = await pool.query(`SELECT b.id, b.name, b.address, b.city, b.units_count, b.customer_id, c.name AS customer_name,
       (SELECT array_agg(s.scope) FROM reading_schedules s WHERE s.building_id = b.id) AS scopes
-    FROM buildings b LEFT JOIN customers c ON c.id = b.customer_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY b.name LIMIT 500`, p);
+    FROM buildings b LEFT JOIN customers c ON c.id = b.customer_id WHERE b.archived_at IS NULL ${w.length ? 'AND ' + w.join(' AND ') : ''} ORDER BY b.name LIMIT 500`, p);
   res.json(q.rows);
 }));
 r.get('/klienci', use, wrap(async (req, res) => {
-  const q = await pool.query(`SELECT id, name, kind, phone, email FROM customers WHERE kind <> 'klient_zagraniczny' ORDER BY name LIMIT 1000`);
+  const q = await pool.query(`SELECT id, name, kind, phone, email FROM customers WHERE kind <> 'klient_zagraniczny' AND archived_at IS NULL ORDER BY name LIMIT 1000`);
   res.json(q.rows);
 }));
 // Nowy klient do odczytów (trafia do wspólnej ewidencji klientów CRM).

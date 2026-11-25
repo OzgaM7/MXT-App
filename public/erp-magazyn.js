@@ -17,10 +17,10 @@
   const td = (label, html, cls) => `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ''}>${html}</td>`;
   const ctable = (head, rows, empty) => rows.length ? `<div class="table-wrap"><table class="table table-cards"><thead><tr>${head.map(h => `<th${h.num ? ' class="num"' : ''}>${esc(h.t || h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<p class="empty-inline">${esc(empty)}</p>`;
   let tab = 'stany';
-  const st = { q: '', rodzaj: '', dzial: '', ponizej: '', drodzaj: '' };
+  const st = { q: '', rodzaj: '', dzial: '', ponizej: '', drodzaj: '', limit: '', dlimit: '' };
 
   async function page(root, path, alive) {
-    const sp = new URLSearchParams(location.search);
+    const sp = U().urlParams();
     if (sp.get('tab') && TABS.some(t => t[0] === sp.get('tab'))) tab = sp.get('tab');
     const body = U().deptFrame(root, 'Magazyn', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
@@ -36,7 +36,7 @@
 
   // ---------- stany i pozycje ----------
   async function stany(body, reload, alive) {
-    const q = new URLSearchParams(Object.entries({ q: st.q, rodzaj: st.rodzaj, dzial: st.dzial, ponizej: st.ponizej }).filter(([, v]) => v));
+    const q = new URLSearchParams(Object.entries({ q: st.q, rodzaj: st.rodzaj, dzial: st.dzial, ponizej: st.ponizej, limit: st.limit }).filter(([, v]) => v));
     const [items, whs] = await Promise.all([api('magazyn/pozycje?' + q), api('magazyn/magazyny')]);
     if (!alive()) return;
     const value = items.reduce((s, x) => s + x.stock_value, 0), low = items.filter(x => x.below_min).length;
@@ -57,7 +57,8 @@
         ${td('Minimum', esc(num(x.min_qty)), 'num')}${td('Koszt średni', esc(pln(x.avg_cost)), 'num')}${td('Cena sprzedaży', x.sale_price ? esc(pln(x.sale_price)) : '–', 'num')}${td('Wartość', esc(pln(x.stock_value)), 'num')}</tr>`),
       'Brak pozycji. Dodaj materiał lub część przyciskiem „Nowa pozycja”.')}</section>
       <p class="muted small">Wolne = stan − rezerwacje. Wycena wydań: średni ważony koszt zakupu (przeliczany przy każdym przyjęciu).</p>`;
-    body.querySelector('#sf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; st.q = val(f, 'q').trim(); st.rodzaj = val(f, 'rodzaj'); st.dzial = val(f, 'dzial'); st.ponizej = f.elements.ponizej.checked ? '1' : ''; reload(); });
+    body.querySelector('#sf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; st.q = val(f, 'q').trim(); st.rodzaj = val(f, 'rodzaj'); st.dzial = val(f, 'dzial'); st.ponizej = f.elements.ponizej.checked ? '1' : ''; st.limit = ''; reload(); });
+    U().moreBar(body, items, n => { st.limit = n; reload(); });
     body.querySelectorAll('[data-it]').forEach(b => b.addEventListener('click', () => itemCard(b.dataset.it, reload)));
     const nb = body.querySelector('#it-new'); if (nb) nb.addEventListener('click', () => itemForm(null, reload));
     body.querySelectorAll('[data-doc]').forEach(b => b.addEventListener('click', () => docForm(b.dataset.doc, whs, reload)));
@@ -125,7 +126,7 @@
       ${kind === 'INW' ? field('df-c' + i, 'Stan policzony', `<input id="df-c${i}" name="cnt${i}" type="number" min="0" step="0.001"${i ? '' : ' required'}>`) : field('df-q' + i, 'Ilość', `<input id="df-q${i}" name="qty${i}" type="number" min="0.001" step="0.001"${i ? '' : ' required'}>`)}
       ${kind === 'PZ' ? field('df-p' + i, 'Cena zakupu netto', `<input id="df-p${i}" name="price${i}" type="number" min="0" step="0.01"${i ? '' : ' required'}>`) : ''}
       ${kind === 'WZ' ? field('df-s' + i, 'Cena sprzedaży netto', `<input id="df-s${i}" name="sale${i}" type="number" min="0" step="0.01">`) : ''}</div>`;
-    const due = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+    const due = U().dayPlus(14);
     modal(DOC[kind], `
       <div class="field-row">${field('df-w', kind === 'MM' ? 'Z magazynu' : 'Magazyn', `<select id="df-w" name="wh">${act.map(w => `<option value="${esc(w.id)}">${esc(w.code + ' – ' + w.name)}</option>`).join('')}</select>`)}
         ${kind === 'MM' ? field('df-t', 'Do magazynu', `<select id="df-t" name="to">${act.map((w, i) => `<option value="${esc(w.id)}"${i === 1 ? ' selected' : ''}>${esc(w.code + ' – ' + w.name)}</option>`).join('')}</select>`) : ''}
@@ -142,25 +143,35 @@
       const d = await api('magazyn/dokumenty', b); toast(`Zatwierdzono ${d.number} (${pln(d.total_value)}).`); after();
     } });
   }
-  async function docCard(id) {
+  async function docCard(id, after) {
     const d = await api('magazyn/dokumenty/' + id);
-    modal(`${d.number} – ${DOC[d.kind]}`, `<p class="muted">${esc(fd(d.doc_date))} · magazyn ${esc(d.warehouse)}${d.to_warehouse ? ' → ' + esc(d.to_warehouse) : ''}${d.supplier_name ? ' · dostawca ' + esc(d.supplier_name) : ''}${d.invoice_no ? ' · faktura ' + esc(d.invoice_no) : ''}${d.project_number ? ' · projekt ' + esc(d.project_number) : ''} · ${esc(d.created_by_login || '')}</p>
+    const PROC = ['purchase_order', 'part_order', 'part_return', 'sale', 'inventory'];
+    const canCancel = d.status !== 'anulowany' && d.kind !== 'INW' && !PROC.includes(d.related_type) && !(d.kind === 'PZ' && d.paid_at)
+      && (has('stock.manage') || (['RW', 'ZW'].includes(d.kind) && has('service.manage')));
+    const box = modal(`${d.number} – ${DOC[d.kind]}`, `<p class="muted">${esc(fd(d.doc_date))} · magazyn ${esc(d.warehouse)}${d.to_warehouse ? ' → ' + esc(d.to_warehouse) : ''}${d.supplier_name ? ' · dostawca ' + esc(d.supplier_name) : ''}${d.invoice_no ? ' · faktura ' + esc(d.invoice_no) : ''}${d.project_number ? ' · projekt ' + esc(d.project_number) : ''} · ${esc(d.created_by_login || '')}</p>
       ${ctable(['Indeks', 'Nazwa', 'Magazyn', { t: 'Ilość', num: 1 }, { t: 'Koszt jedn.', num: 1 }, { t: 'Wartość', num: 1 }], d.moves.map(m => `<tr>${td('Indeks', esc(m.sku))}${td('Nazwa', esc(m.name))}${td('Magazyn', esc(m.warehouse))}${td('Ilość', esc(num(m.qty)) + ' ' + esc(m.unit), 'num')}${td('Koszt jedn.', esc(pln(m.unit_cost)), 'num')}${td('Wartość', esc(pln(m.value)), 'num')}</tr>`), '')}
-      <p><b>Wartość dokumentu: ${esc(pln(d.total_value))}</b></p>${d.note ? `<p class="muted">${esc(d.note)}</p>` : ''}`, { wide: true });
+      <p><b>Wartość dokumentu: ${esc(pln(d.total_value))}</b></p>${d.note ? `<p class="muted">${esc(d.note)}</p>` : ''}
+      ${d.status === 'anulowany' ? `<p class="notice">Dokument anulowany ${esc(fd(d.cancelled_at))}${d.cancel_reason ? ' – ' + esc(d.cancel_reason) : ''}. Stany zostały cofnięte; dokument nie liczy się do kosztów ani zobowiązań.</p>` : ''}
+      ${canCancel ? '<div class="ap-actions"><button type="button" class="btn btn-ghost btn-sm" id="dc-cancel">Anuluj dokument (błędny wpis)</button></div>' : ''}`, { wide: true });
+    const cb = box.querySelector('#dc-cancel');
+    if (cb) cb.addEventListener('click', () => modal('Anuluj dokument ' + d.number, `<p>Ruchy dokumentu zostaną cofnięte na stanach (${d.kind === 'PZ' || d.kind === 'ZW' ? 'towar zejdzie ze stanu – tylko jeśli nie został wydany ani zarezerwowany' : 'towar wróci na stan'}). Dokument zostaje w rejestrze jako „anulowany” z powodem, ale nie liczy się do kosztów ani zobowiązań.</p>
+      ${field('dc-r', 'Powód anulowania', '<input id="dc-r" name="r" required maxlength="500" placeholder="np. pomyłka w ilości – wystawiono nowy dokument">')}`,
+      { submit: 'Anuluj dokument', danger: true, cancel: 'Wróć', onSubmit: async f => { await api('magazyn/dokumenty/' + d.id + '/anuluj', { powod: val(f, 'r') }); toast('Dokument anulowany, stany cofnięte.'); if (after) after(); } }));
   }
   async function dokumenty(body, reload, alive) {
-    const [list, whs] = await Promise.all([api('magazyn/dokumenty' + (st.drodzaj ? '?rodzaj=' + st.drodzaj : '')), api('magazyn/magazyny')]);
+    const [list, whs] = await Promise.all([api('magazyn/dokumenty?' + new URLSearchParams(Object.entries({ rodzaj: st.drodzaj, limit: st.dlimit }).filter(([, v]) => v))), api('magazyn/magazyny')]);
     if (!alive()) return;
     const manage = has('stock.manage');
     body.innerHTML = `<p data-ws-sub>Ostatnie ${list.length} dokumentów magazynowych</p>
       <div data-ws-actions hidden>${manage ? Object.keys(DOC).map(k => `<button type="button" class="btn btn-secondary btn-sm" data-doc="${k}">${k}</button>`).join('') : has('service.manage') ? '<button type="button" class="btn btn-secondary btn-sm" data-doc="RW">RW</button><button type="button" class="btn btn-secondary btn-sm" data-doc="ZW">ZW</button>' : ''}</div>
       <div class="toolbar"><label class="visually-hidden" for="dk">Rodzaj</label><select id="dk" class="select-sm"><option value="">Wszystkie rodzaje</option>${Object.entries(DOC).map(([k, v]) => `<option value="${k}"${st.drodzaj === k ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
       <section class="panel">${ctable(['Numer', 'Data', 'Magazyn', 'Dotyczy', { t: 'Pozycje', num: 1 }, { t: 'Wartość', num: 1 }, 'Wystawił'], list.map(d => `<tr>
-        ${td('Numer', `<button type="button" class="linkish" data-o="${esc(d.id)}">${esc(d.number)}</button>`)}${td('Data', esc(fd(d.doc_date)))}${td('Magazyn', esc(d.warehouse) + (d.to_warehouse ? ' → ' + esc(d.to_warehouse) : ''))}
+        ${td('Numer', `<button type="button" class="linkish" data-o="${esc(d.id)}">${esc(d.number)}</button>${d.status === 'anulowany' ? ' ' + chip('deny', 'anulowany') : ''}`)}${td('Data', esc(fd(d.doc_date)))}${td('Magazyn', esc(d.warehouse) + (d.to_warehouse ? ' → ' + esc(d.to_warehouse) : ''))}
         ${td('Dotyczy', esc(d.supplier_name || d.customer_name || d.project_number || (d.related_type ? d.related_type : '–')) + (d.invoice_no ? `<div class="muted small">FV ${esc(d.invoice_no)}${d.kind === 'PZ' ? (d.paid_at ? ' · zapłacona' : d.due_date ? ' · termin ' + esc(fd(d.due_date)) : '') : ''}</div>` : ''))}
         ${td('Pozycje', esc(d.lines), 'num')}${td('Wartość', esc(pln(d.total_value)), 'num')}${td('Wystawił', esc(d.created_by_login || '–'))}</tr>`), 'Brak dokumentów.')}</section>`;
-    body.querySelector('#dk').addEventListener('change', e => { st.drodzaj = e.target.value; reload(); });
-    body.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => docCard(b.dataset.o)));
+    body.querySelector('#dk').addEventListener('change', e => { st.drodzaj = e.target.value; st.dlimit = ''; reload(); });
+    U().moreBar(body, list, n => { st.dlimit = n; reload(); });
+    body.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => docCard(b.dataset.o, reload)));
     body.querySelectorAll('[data-doc]').forEach(b => b.addEventListener('click', () => docForm(b.dataset.doc, whs, reload)));
   }
 

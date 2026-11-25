@@ -207,7 +207,7 @@
         if (val(f, 'assigned_to')) { b.assigned_to = val(f, 'assigned_to'); b.planned_date = val(f, 'planned_date') || null; }
         b.zweryfikowane = !f.querySelector('[name=nowe]').checked;
         const r = await api('serwisy', b); toast(`Przyjęto zlecenie ${r.number}. Termin przydziału: ${fd(r.assign_due)}.`);
-      } else { await api('serwisy/' + o.id, b, 'PATCH'); toast('Zapisano zmiany.'); }
+      } else { await api('serwisy/' + o.id, { ...b, updated_at: o.updated_at }, 'PATCH'); toast('Zapisano zmiany.'); }
       after();
     } });
   }

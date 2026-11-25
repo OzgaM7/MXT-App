@@ -9,7 +9,7 @@ const eq = (a, b, m) => { assert.equal(a, b, m); passed++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const T = '[T3]';
 
-const nbpDate = new Date().toISOString().slice(0, 10);
+const nbpDate = require('./_setup').warsawDay();   // jak aplikacja: data wg czasu polskiego
 const nbp = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify([{ table: 'A', no: '218/A/NBP/2026', effectiveDate: nbpDate, rates: [
@@ -32,7 +32,7 @@ const PDF_MIN = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').t
     const A = await login('m.ozga'), U = await login('m.ozga1'), K = await login('k.kretkowska');
 
     // --- CRM ---
-    let r = await call('klienci', { kind: 'wspolnota', name: T + ' Wspólnota Mieszkaniowa Słoneczna 12', tax_id: '5251234567', address: 'ul. Słoneczna 12, 00-001 Warszawa', email: 'zarzad@slonczna.pl',
+    let r = await call('klienci', { kind: 'wspolnota', name: T + ' Wspólnota Mieszkaniowa Słoneczna 12', tax_id: '5251234560', address: 'ul. Słoneczna 12, 00-001 Warszawa', email: 'zarzad@slonczna.pl',
       contacts: [{ imie: 'Anna Nowak', funkcja: 'Zarząd', telefon: '600100200' }], departments: ['podzielniki-i-montaze'] }, U);
     eq(r.s, 201, 'klient (wspólnota)'); const wsp = r.j;
     eq((await call('klienci', { kind: 'firma', name: 'X', email: 'zly' }, U)).s, 400, 'walidacja klienta');
@@ -41,7 +41,7 @@ const PDF_MIN = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').t
     eq((await call('klienci?q=' + encodeURIComponent('Słoneczna'), null, K)).j.length >= 1, true, 'wyszukiwanie w CRM');
 
     // --- dział 1: budynki, urządzenia, ekipy, montaże, protokół ---
-    r = await call('d1/budynki', { customer_id: wsp.id, name: T + ' Słoneczna 12', address: 'ul. Słoneczna 12', city: 'Warszawa', units_count: 48 }, U);
+    r = await call('d1/budynki', { customer_id: wsp.id, name: T + ' Słoneczna 12', address: 'ul. Słoneczna 12', city: 'Warszawa', units_count: 48, potwierdz_duplikat: true }, U);
     eq(r.s, 201); const bud = r.j;
     r = await call('d1/ekipy', { name: T + ' Ekipa A', leader: 'Jan Kowalski', phone: '600000001' }, U); const crew = r.j;
     eq((await call('d1/instalatorzy', { crew_id: crew.id, name: 'Piotr Zieliński', qualifications: 'SEP do 1 kV' }, U)).s, 201);
@@ -63,14 +63,16 @@ const PDF_MIN = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').t
     eq(r.s, 201); eq(r.j.building_id, bud.id, 'reklamacja powiązana z budynkiem'); eq(r.j.customer_id, wsp.id, '… i klientem');
     eq((await call(`reklamacje/${r.j.id}`, { status: 'rozwiazana', resolution: 'Wymiana baterii' }, K, 'PATCH')).j.status, 'rozwiazana');
     // finanse i rentowność
-    eq((await call('finanse', { department_id: 'podzielniki-i-montaze', kind: 'przychod', category: 'faktura', amount: 12000, invoice_no: 'FV/1/2026', due_date: '2026-01-01', project_id: kt.id, building_id: bud.id, customer_id: wsp.id }, U)).s, 201);
-    eq((await call('finanse', { department_id: 'podzielniki-i-montaze', kind: 'koszt', category: 'materiały', amount: 4000, building_id: bud.id, installation_id: mz.id, project_id: kt.id }, U)).s, 201);
-    eq((await call('finanse', { department_id: 'ubezpieczenia', kind: 'koszt', amount: 1 }, U)).s, 400, 'brak finansów działu 3');
-    const rent = (await call('d1/rentownosc', null, K)).j;
+    eq((await call('finanse', { department_id: 'podzielniki-i-montaze', kind: 'koszt', amount: 1 }, U)).s, 403, 'rejestr finansów – pracownik biura bez dostępu (tylko role finansowe)');
+    eq((await call('d1/rentownosc', null, U)).s, 403, 'rentowność – tylko role finansowe');
+    eq((await call('finanse', { department_id: 'podzielniki-i-montaze', kind: 'przychod', category: 'faktura', amount: 12000, invoice_no: 'FV/1/2026', due_date: '2026-01-01', project_id: kt.id, building_id: bud.id, customer_id: wsp.id }, A)).s, 201);
+    eq((await call('finanse', { department_id: 'podzielniki-i-montaze', kind: 'koszt', category: 'materiały', amount: 4000, building_id: bud.id, installation_id: mz.id, project_id: kt.id }, A)).s, 201);
+    eq((await call('finanse', { department_id: 'ubezpieczenia', kind: 'koszt', amount: 1 }, A)).s, 400, 'brak finansów działu 3');
+    const rent = (await call('d1/rentownosc', null, A)).j;
     const rb = rent.buildings.find(x => x.id === bud.id); eq(rb.marza, 8000, 'rentowność budynku'); eq(rb.marza_pct, 66.7);
     const kk = (await call('d1/kontrakty', null, K)).j.find(x => x.id === kt.id); eq(kk.zafakturowano, 12000); eq(kk.do_zafakturowania, 12000); eq(kk.zaplacono, 0);
-    const fs1 = (await call('finanse/podsumowanie', null, K)).j; ok(fs1.invoices.po_terminie >= 1, 'faktura po terminie'); eq(fs1.months.length, 12);
-    const fin = (await call('finanse?building_id=' + bud.id, null, U)).j;
+    const fs1 = (await call('finanse/podsumowanie', null, A)).j; ok(fs1.invoices.po_terminie >= 1, 'faktura po terminie'); eq(fs1.months.length, 12);
+    const fin = (await call('finanse?building_id=' + bud.id, null, A)).j;
     eq((await call('finanse/' + fin[0].id + '/anuluj', { powod: 'test uprawnień' }, U)).s, 403, 'anulowanie wpisów finansowych tylko admin');
 
     // --- kursy walut (NBP) ---

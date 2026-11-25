@@ -6,6 +6,7 @@ const { audit } = require('../lib/audit');
 const { requirePerm, can, PERMISSIONS, ROLES } = require('../lib/rbac');
 const ops = require('../lib/operations');
 const catalog = require('../lib/ai/catalog');
+const { listLimit, withTotal } = require('./_util');
 
 const r = express.Router();
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(e => {
@@ -62,8 +63,8 @@ r.get('/tasks', requirePerm('tasks.use'), wrap(async (req, res) => {
   if (TASK_STATUS.includes(req.query.status)) { p.push(req.query.status); w.push(`t.status = $${p.length}`); }
   else if (req.query.status === 'otwarte') w.push(`t.status IN ('nowe','w_toku')`);
   if (req.query.department) { p.push(String(req.query.department)); w.push(`t.department_id = $${p.length}`); }
-  const q = await pool.query(TASK_SELECT + (w.length ? ' WHERE ' + w.join(' AND ') : '') +
-    ` ORDER BY (t.status IN ('zakonczone','anulowane')), t.due_date NULLS LAST, array_position(ARRAY['pilny','wysoki','normalny','niski'], t.priority), t.created_at DESC LIMIT 300`, p);
+  const q = await pool.query(withTotal(TASK_SELECT) + (w.length ? ' WHERE ' + w.join(' AND ') : '') +
+    ` ORDER BY (t.status IN ('zakonczone','anulowane')), t.due_date NULLS LAST, array_position(ARRAY['pilny','wysoki','normalny','niski'], t.priority), t.created_at DESC LIMIT ${listLimit(req, 300)}`, p);
   res.json(q.rows);
 }));
 
@@ -302,7 +303,7 @@ r.use('/d1', require('./dzial1'));
 // ---------- etap 4: automatyzacje, Communication Hub, Business Intelligence ----------
 r.use('/automatyzacje', require('./automatyzacje'));
 r.use('/komunikacja', require('./komunikacja'));
-r.get('/bi', requirePerm('tasks.use'), wrap(async (req, res) => res.json(await require('../lib/bi').analytics())));
+r.get('/bi', requirePerm('finance.view'), wrap(async (req, res) => res.json(await require('../lib/bi').analytics())));
 r.use('/szkolenia', require('./szkolenia').router);
 r.use('/', require('./biznes').router);
 

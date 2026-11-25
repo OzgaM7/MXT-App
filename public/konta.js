@@ -39,7 +39,7 @@
     body.innerHTML = `
       <section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>Konto</th><th>Role</th><th>Instalator</th><th>Kontakt</th><th>Status</th><th>Ostatnie logowanie</th><th></th></tr></thead>
         <tbody>${rows(active)}${rows(off)}</tbody></table></div>
-        <p class="muted small">Kont się nie usuwa: po odejściu pracownika wyłącz konto – jego wpisy zostają w historii. Nowe konto dostaje hasło tymczasowe; pracownik ustawia własne przy pierwszym logowaniu.</p></section>
+        <p class="muted small">Po odejściu pracownika wyłącz konto (Edytuj → odznacz „Konto aktywne”) – jego wpisy zostają w historii. Usunąć można tylko konto bez historii, np. założone przez pomyłkę. Nowe konto dostaje hasło tymczasowe; pracownik ustawia własne przy pierwszym logowaniu.</p></section>
       <section class="panel"><h2 class="panel-title">Role</h2><ul class="role-help">${Object.entries(M.roles).map(([k, v]) => `<li><b>${esc(v)}</b> – ${esc(ROLE_HELP[k] || '')}</li>`).join('')}</ul>
         <p class="muted small">Konto może mieć rolę główną i role dodatkowe (np. monter, który też rozlicza) – uprawnienia się sumują. Pełna tabela uprawnień: Security &amp; Audit.</p></section>`;
     body.parentElement.querySelector('#acc-new').addEventListener('click', () => accountForm(null, M, inst, reload));
@@ -71,7 +71,8 @@
       ${field('a-inst', 'Powiązany instalator (monter widzi montaże jego ekipy)', `<select id="a-inst" name="installer_id"><option value="">– brak –</option>${free.map(i =>
         `<option value="${i.id}"${a && i.user_id === a.id ? ' selected' : ''}>${esc(i.name)}${i.crew_name ? ' – ' + esc(i.crew_name) : ' – bez ekipy'}</option>`).join('')}</select>`)}
       ${free.length ? '' : '<p class="muted small">Brak wolnych instalatorów. Dodaj instalatora w dziale Podzielniki i Montaże → Ekipy i instalatorzy.</p>'}
-      ${!isNew && !self ? `<label class="toggle"><input type="checkbox" name="is_active"${d.is_active ? ' checked' : ''}> Konto aktywne (wyłączone konto nie może się zalogować, dane zostają)</label>` : ''}`,
+      ${!isNew && !self ? `<label class="toggle"><input type="checkbox" name="is_active"${d.is_active ? ' checked' : ''}> Konto aktywne (wyłączone konto nie może się zalogować, dane zostają)</label>
+        <p class="muted small">Konto założone przez pomyłkę (bez żadnej historii) można usunąć: <button type="button" class="btn btn-ghost btn-sm" id="a-del">Usuń konto</button></p>` : ''}`,
     { submit: isNew ? 'Utwórz konto' : 'Zapisz', onSubmit: async f => {
       const extra = [...f.querySelectorAll('input[name=extra]:checked')].map(x => x.value);
       const body = { full_name: val(f, 'full_name'), email: val(f, 'email'), phone: val(f, 'phone'), extra_roles: extra, installer_id: val(f, 'installer_id') || null };
@@ -87,7 +88,15 @@
       }
       after();
     } });
+    const del = document.getElementById('a-del');
+    if (del) del.addEventListener('click', async () => {
+      const h = await api('konta/' + a.id + '/historia').catch(() => []);
+      if (h.length) { toast('Konto ma historię (' + h.map(([l, n]) => l + ': ' + n).join(', ') + ') – nie można go usunąć. Odznacz „Konto aktywne”, aby je wyłączyć.'); return; }
+      modal('Usunąć konto ' + a.login + '?', `<p>Konto <b>${esc(a.login)}</b> (${esc(a.full_name || '')}) nie ma żadnych wpisów w systemie. Usunięcie jest nieodwracalne.</p>`,
+        { submit: 'Usuń konto', danger: true, onSubmit: async () => { await api('konta/' + a.id, null, 'DELETE'); toast('Konto usunięte.'); after(); } });
+    });
   }
+  window.MXT_KONTA = { accountForm, showTemp };
 
   // ---------- Powiadomienia ----------
   const KIND = { 'montaz.przydzial': 'Przydział', 'montaz.zmiana_terminu': 'Zmiana terminu', 'montaz.odwolanie': 'Przekazanie', 'montaz.anulowanie': 'Anulowanie',

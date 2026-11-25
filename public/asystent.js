@@ -24,7 +24,7 @@
   const orderLink = x => x.order_number ? `<button type="button" class="linkish" data-order="${esc(x.service_order_id)}">${esc(x.order_number)}</button>` : '';
 
   async function page(root, path, alive) {
-    const want = new URLSearchParams(location.search).get('tab');
+    const want = U().urlParams().get('tab');
     if (want && TABS.some(([k]) => k === want)) tab = want;
     const body = U().deptFrame(root, 'Asystent telefoniczny', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);

@@ -24,7 +24,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
   const users = [], PASS = 'Erp-Test-2026x';
   const T = { customers: [], buildings: [], items: [], warehouses: [], projects: [], orders: [], installations: [], schedules: [], docs: [] };
-  const month = new Date().toISOString().slice(0, 7), today = new Date().toISOString().slice(0, 10);
+  const today = require('./_setup').warsawDay(), month = today.slice(0, 7);
   const planBefore = (await pool.query(`SELECT metric, target FROM monthly_plans WHERE month = $1::date`, [month + '-01'])).rows;
   try {
     for (let i = 0; i < 60; i++) { try { await fetch(base + '/api/health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
@@ -57,7 +57,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
 
     // ---------- klient, budynek, projekt, zlecenia ----------
     const C = (await call('klienci', { kind: 'wspolnota', name: '[T-ERP4] Wspólnota Testowa 7' }, BIU.c)).j; T.customers.push(C.id);
-    const B = (await call('d1/budynki', { customer_id: C.id, name: '[T-ERP4] Testowa 7', address: 'ul. Testowa 7', city: 'Zielona Góra', units_count: 5 }, BIU.c)).j; T.buildings.push(B.id);
+    const B = (await call('d1/budynki', { customer_id: C.id, name: '[T-ERP4] Testowa 7', address: 'ul. Testowa 7', city: 'Zielona Góra', units_count: 5, potwierdz_duplikat: true }, BIU.c)).j; T.buildings.push(B.id);
     r = await call('d1/kontrakty', { customer_id: C.id, title: '[T-ERP4] Wymiana podzielników', value_net: 20000 }, BIU.c); eq(r.s, 201, 'projekt'); const P = r.j; T.projects.push(P.id);
     const X = (await call('d1/montaze', { building_id: B.id, project_id: P.id, planned_date: today, devices_planned: 5 }, BIU.c)).j; T.installations.push(X.id);
     const SO = (await call('serwisy', { customer_id: C.id, building_id: B.id, client_name: '[T-ERP4] Lokator', address: 'ul. Testowa 7', unit: '3', description: '[T-ERP4] Wymiana podzielnika' }, BIU.c)).j; T.orders.push(SO.id);
@@ -148,7 +148,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
     near(card.money.przychod, 5300, 'przychód projektu (montaż + serwis)');
     ok(card.money.marza === Math.round((card.money.przychod - card.money.koszt) * 100) / 100 && card.money.wykorzystanie_budzetu_pct > 0, 'marża i wykorzystanie budżetu');
     // zakładka „Rentowność” liczy tak samo jak karta projektu: koszty z księgi kosztów (materiały z RW, robocizna z czasu pracy)
-    r = await call('d1/rentownosc', null, BIU.c);
+    r = await call('d1/rentownosc', null, KIE.c);   // rentowność – tylko z finance.view (biuro: 403)
     const rp = r.j.projects.find(x => x.id === P.id), ri = r.j.installations.find(x => x.id === X.id), rb = r.j.buildings.find(x => x.id === B.id);
     near(rp.przychod, card.money.przychod, 'rentowność kontraktu: przychód = karta projektu'); near(rp.koszt, card.money.koszt, 'rentowność kontraktu: koszt = karta projektu (z materiałami i robocizną)');
     const instCost = (await pool.query(`SELECT sum(amount)::float s FROM cost_ledger WHERE installation_id = $1`, [X.id])).rows[0].s;
@@ -175,7 +175,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
     const SCH = r.j; T.schedules.push(SCH.id);
     await pool.query('UPDATE reading_schedules SET project_id = $2 WHERE id = $1', [SCH.id, P.id]);
     r = await call(`d1/odczyty/${SCH.id}/urzadzenia?data=${today}`, null, OD.c); eq(r.j.devices.length, 6, 'urządzenia budynku w zakresie odczytu');
-    const prev = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+    const prev = require('./_setup').warsawDay(-365);
     eq((await call(`d1/odczyty/${SCH.id}/wartosci`, { read_at: prev, values: [{ device_id: dev('T4C001'), value: 120.5 }] }, OD.c)).s, 200, 'odczyt poprzedni ciepłomierza');
     r = await call(`d1/odczyty/${SCH.id}/wartosci`, { read_at: today, source: 'mobilny', values: [
       { device_id: dev('T4P001'), value: 100 }, { device_id: dev('T4P002'), value: 110 }, { device_id: dev('T4P003'), value: 95 }, { device_id: dev('T4P004'), value: '' , note: 'brak dostępu' },
@@ -216,7 +216,7 @@ const near = (a, b, m) => { assert.ok(Math.abs(Number(a) - Number(b)) < 0.011, `
 
     console.log(`OK: testy ERP – dział operacyjny i magazyn przeszły (${passed} sprawdzeń)`);
   } catch (e) {
-    console.error('BŁĄD:', e.message); process.exitCode = 1;
+    console.error('BŁĄD:', e.message, e.stack.split('\n').slice(1, 3).join(' | ')); process.exitCode = 1;
   } finally {
     const q = (sql, p) => pool.query(sql, p).catch(e => console.error('sprzątanie:', e.message.slice(0, 160)));
     const P = T.projects, B = T.buildings;

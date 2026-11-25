@@ -9,7 +9,8 @@ const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const xlsx = require('../../lib/xlsx');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, listLimit } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const buy = requirePerm('purchases.manage'), fin = requirePerm('finance.view');
@@ -43,9 +44,9 @@ const poTotal = (c, id) => c.query('UPDATE purchase_orders SET total_net = coale
 r.get('/zakupy', requirePerm('stock.view'), wrap(async (req, res) => {
   const st = Object.hasOwn(PO_ST, req.query.status) ? req.query.status : null;
   const w = st ? 'WHERE o.status = $1' : req.query.otwarte === '1' ? `WHERE o.status IN ('szkic', 'zamowione', 'czesciowo')` : '';
-  res.json((await pool.query(`SELECT o.id, o.number, o.status, o.order_date, o.expected_date, o.total_net::float AS total_net, s.name AS supplier_name, w.code AS warehouse,
+  res.json((await pool.query(`SELECT count(*) OVER()::int AS total_count, o.id, o.number, o.status, o.order_date, o.expected_date, o.total_net::float AS total_net, s.name AS supplier_name, w.code AS warehouse,
       (SELECT count(*)::int FROM purchase_order_lines l WHERE l.order_id = o.id) AS lines, (o.status IN ('zamowione', 'czesciowo') AND o.expected_date < ${TODAY}) AS late
-    FROM purchase_orders o JOIN suppliers s ON s.id = o.supplier_id JOIN warehouses w ON w.id = o.warehouse_id ${w} ORDER BY o.created_at DESC LIMIT 300`, st ? [st] : [])).rows.map(o => ({ ...o, status_label: PO_ST[o.status] })));
+    FROM purchase_orders o JOIN suppliers s ON s.id = o.supplier_id JOIN warehouses w ON w.id = o.warehouse_id ${w} ORDER BY o.created_at DESC LIMIT ${listLimit(req, 300)}`, st ? [st] : [])).rows.map(o => ({ ...o, status_label: PO_ST[o.status] })));
 }));
 r.get('/zakupy/:id', idParam, requirePerm('stock.view'), wrap(async (req, res) => { const o = await loadPo(pool, req.params.id); res.json({ ...o, status_label: PO_ST[o.status] }); }));
 r.post('/zakupy', buy, wrap(async (req, res) => {
@@ -121,7 +122,7 @@ r.post('/zakupy/:id/przyjmij', idParam, requirePerm('stock.manage'), wrap(async 
       if (!l.line) throw bad(400, 'Pozycja spoza zamówienia.');
       if (l.qty > l.line.qty - l.line.received_qty + 1e-9) throw bad(409, `${l.line.sku}: przyjęcie ponad zamówioną ilość (zostało ${r3(l.line.qty - l.line.received_qty)}).`);
     }
-    const due = V.date(b.due_date, 'Termin płatności') || new Date(Date.now() + Number(x.payment_days || 14) * 864e5).toISOString().slice(0, 10);
+    const due = V.date(b.due_date, 'Termin płatności') || plToday(Number(x.payment_days || 14));
     const doc = await S.post(c, { kind: 'PZ', warehouse_id: x.warehouse_id, supplier_id: x.supplier_id, invoice_no: V.str(b.invoice_no, 60), due_date: due,
       related_type: 'purchase_order', related_id: x.id, note: 'Dostawa do zamówienia ' + x.number,
       lines: lines.map(l => ({ item_id: l.line.item_id, qty: l.qty, unit_cost: l.price === undefined || l.price === '' ? l.line.unit_price : V.num(l.price, 0, 1e9, 'Cena') })), userId: req.user.id });
@@ -135,7 +136,7 @@ r.post('/zakupy/:id/przyjmij', idParam, requirePerm('stock.manage'), wrap(async 
 }));
 
 // ======================= finanse firmy =======================
-const period = q => ({ od: V.date(q.od, 'Od') || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10), do: V.date(q.do, 'Do') || new Date().toISOString().slice(0, 10) });
+const period = q => ({ od: V.date(q.od, 'Od') || plToday().slice(0, 4) + '-01-01', do: V.date(q.do, 'Do') || plToday() });
 // Należności: faktury sprzedaży bez zapłaty (wszystkie działy), wiekowanie po terminie płatności.
 r.get('/finanse-erp/naleznosci', fin, wrap(async (req, res) => {
   const rows = (await pool.query(`SELECT f.id, f.department_id, f.description, f.invoice_no, f.entry_date, f.due_date, f.amount_pln::float AS amount, c.name AS customer_name, f.customer_id,
@@ -156,7 +157,7 @@ r.get('/finanse-erp/zobowiazania', fin, wrap(async (req, res) => {
   res.json({ rows, total: r2(rows.reduce((s, x) => s + x.amount, 0)), overdue: r2(rows.filter(x => x.days_overdue > 0).reduce((s, x) => s + x.amount, 0)) });
 }));
 r.post('/finanse-erp/zaplata', fin, wrap(async (req, res) => {
-  const b = req.body || {}, paid = V.date(b.paid_at, 'Data zapłaty') || new Date().toISOString().slice(0, 10), id = V.uuid(b.id, 'Dokument', true);
+  const b = req.body || {}, paid = V.date(b.paid_at, 'Data zapłaty') || plToday(), id = V.uuid(b.id, 'Dokument', true);
   const src = V.oneOf(b.source, ['pz', 'finanse'], 'Źródło');
   const q = src === 'pz' ? await pool.query(`UPDATE stock_docs SET paid_at = $2 WHERE id = $1 AND kind = 'PZ' AND paid_at IS NULL RETURNING id`, [id, paid])
     : await pool.query(`UPDATE finance SET paid_at = $2 WHERE id = $1 AND paid_at IS NULL RETURNING id, part_order_id`, [id, paid]);
@@ -170,7 +171,7 @@ async function results(od, dd) {
   const [rev, cost, pol] = await Promise.all([
     pool.query(`SELECT department_id AS d, sum(amount_pln)::float s FROM finance WHERE kind = 'przychod' AND entry_date BETWEEN $1 AND $2 GROUP BY 1`, [od, dd]),
     pool.query(`SELECT coalesce(department_id, '') AS d, sum(amount)::float s FROM cost_ledger WHERE cost_date BETWEEN $1 AND $2 GROUP BY 1`, [od, dd]),
-    pool.query(`SELECT count(*)::int n, coalesce(sum(total_amount), 0)::float kwota, coalesce(sum(profit), 0)::float zysk FROM policies WHERE signed_at BETWEEN $1 AND $2`, [od, dd])]);
+    pool.query(`SELECT count(*)::int n, coalesce(sum(total_amount), 0)::float kwota, coalesce(sum(profit), 0)::float zysk FROM policies WHERE signed_at BETWEEN $1 AND $2 AND cancelled_at IS NULL`, [od, dd])]);
   const out = Object.keys(DEPTS).map(d => {
     const przychod = d === 'ubezpieczenia' ? pol.rows[0].zysk : (rev.rows.find(x => x.d === d) || { s: 0 }).s, koszt = (cost.rows.find(x => x.d === d) || { s: 0 }).s;
     return { department_id: d, name: DEPTS[d], przychod: r2(przychod), koszt: r2(koszt), wynik: r2(przychod - koszt), marza_pct: przychod > 0 ? r2((przychod - koszt) / przychod * 100) : null };
@@ -201,7 +202,7 @@ r.get('/finanse-erp/eksport', fin, wrap(async (req, res) => {
     pool.query(`SELECT f.entry_date, f.invoice_no, f.department_id, f.category, f.description, f.amount_pln, f.due_date, f.paid_at FROM finance f
       WHERE f.kind = 'koszt' AND f.entry_date BETWEEN $1 AND $2 ORDER BY f.entry_date`, [p.od, p.do]),
     pool.query(`SELECT p.signed_at, p.number, p.insurer, p.insurance_type, c.name AS customer, p.total_amount, p.margin_pct, p.profit FROM policies p JOIN customers c ON c.id = p.customer_id
-      WHERE p.signed_at BETWEEN $1 AND $2 ORDER BY p.signed_at`, [p.od, p.do])]);
+      WHERE p.signed_at BETWEEN $1 AND $2 AND p.cancelled_at IS NULL ORDER BY p.signed_at`, [p.od, p.do])]);
   const D = d => DEPTS[d] || d;
   const buf = await xlsx.build([
     { name: 'Sprzedaż (przychody)', rows: sp.rows.map(x => ({ ...x, department_id: D(x.department_id) })), columns: [{ header: 'Data', key: 'entry_date', type: 'date' }, { header: 'Faktura', key: 'invoice_no' },

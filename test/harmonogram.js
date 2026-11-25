@@ -67,7 +67,7 @@ const pdfBuf = () => new Promise(res => { const d = new PDFDocument(); const c =
     const acc = (await call('konta', { login: 't8.monter', full_name: T + ' Adam', role: 'monter', installer_id: inst.id }, A)).j; users.push(acc.id);
     await pool.query(`UPDATE users SET must_change_password = false, password_hash = (SELECT password_hash FROM users WHERE login = 'm.ozga') WHERE id = $1`, [acc.id]);
     const M = (await call('login', { login: 't8.monter', password: '1234' })).c;
-    const bOld = (await call('d1/budynki', { name: T + ' Blok Stary', address: 'ul. Stara 1', city: 'Toruń' }, A)).j;
+    const bOld = (await call('d1/budynki', { name: T + ' Blok Stary', address: 'ul. Stara 1', city: 'Toruń', potwierdz_duplikat: true }, A)).j;
     await call('d1/montaze', { building_id: bOld.id, planned_date: day(20) }, A);
 
     // ---------- szablon ----------

@@ -8,6 +8,10 @@ const bad = (s, m) => new ops.PolicyError(s, m);
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(e => {
   if (e instanceof ops.PolicyError || (e && e.status && e.status < 500 && e.message)) return res.status(e.status).json({ error: e.message });
   if (e && e.code === '22P02') return res.status(400).json({ error: 'Nieprawidłowe dane lub identyfikator.' });
+  // Dane spoza zakresu bazy (za długi tekst, liczba lub data poza zakresem, niedozwolony znak) – błąd danych, nie serwera.
+  if (e && ['22001', '22003', '22007', '22008', '22021', '22004'].includes(e.code)) return res.status(400).json({ error: 'Nieprawidłowe dane (za długi tekst, liczba lub data poza zakresem).' });
+  // Konflikt równoczesnej edycji / zakleszczenie – można bezpiecznie ponowić.
+  if (e && ['40001', '40P01'].includes(e.code)) return res.status(409).json({ error: 'Ktoś w tej chwili zmienia te same dane. Odśwież i spróbuj ponownie.' });
   if (e && e.code === '23505') return res.status(409).json({ error: 'Taki wpis już istnieje (np. numer seryjny lub nazwa).' });
   if (e && e.code === '23503') return res.status(400).json({ error: 'Nieprawidłowe powiązanie z innym rekordem.' });
   if (e && e.code === '23514') return res.status(400).json({ error: 'Nieprawidłowe dane.' });
@@ -31,6 +35,26 @@ function patchSql(table, id, fields) {
   return { sql: `UPDATE ${table} SET ${keys.map((k, i) => `${k} = $${i + 2}`).join(', ')}${['customers', 'buildings', 'projects', 'installations', 'complaints', 'courses'].includes(table) ? ', updated_at = now()' : ''} WHERE id = $1 RETURNING *`, params: [id, ...keys.map(k => fields[k])] };
 }
 
+// Ochrona przed nadpisaniem cudzych zmian (dwie osoby edytują ten sam rekord): formularz odsyła updated_at z chwili otwarcia,
+// inna wartość w bazie oznacza, że ktoś zapisał w międzyczasie – 409 zamiast cichego nadpisania. Bez updated_at (np. szybkie
+// zmiany statusu) – bez sprawdzania.
+function checkFresh(current, seen) {
+  if (!seen || !current) return;
+  const t = new Date(seen).getTime();
+  if (Number.isNaN(t)) return;
+  if (Math.abs(new Date(current).getTime() - t) >= 1) throw bad(409, 'Ktoś inny zmienił te dane po otwarciu formularza. Zamknij okno, odśwież i wprowadź zmiany ponownie.');
+}
+async function assertFresh(db, table, id, seen) {
+  if (!seen) return;
+  const row = (await db.query(`SELECT updated_at FROM ${table} WHERE id = $1`, [id])).rows[0];
+  if (row) checkFresh(row.updated_at, seen);
+}
+
+// Długie listy: domyślna porcja, „Pokaż więcej” w interfejsie prosi o większą (?limit=, z górną granicą). Kolumna total_count
+// (liczba wszystkich pasujących wierszy, liczona przed LIMIT) pozwala pokazać „Pokazano X z Y” zamiast cichego ucięcia listy.
+const listLimit = (req, def, max = 20000) => { const n = parseInt(req.query.limit, 10); return Number.isFinite(n) && n > 0 ? Math.min(n, max) : def; };
+const withTotal = sql => sql.replace(/^\s*SELECT /, 'SELECT count(*) OVER()::int AS total_count, ');
+
 function sendPdf(res, buf, filename, inline = true) {
   res.set({ 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Cache-Control': 'private, no-store',
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/[^\w.-]+/g, '_')}"`,
@@ -38,4 +62,4 @@ function sendPdf(res, buf, filename, inline = true) {
   res.end(buf);
 }
 
-module.exports = { UUID, bad, wrap, idParam, V, patchSql, sendPdf };
+module.exports = { UUID, bad, wrap, idParam, V, patchSql, sendPdf, checkFresh, assertFresh, listLimit, withTotal };

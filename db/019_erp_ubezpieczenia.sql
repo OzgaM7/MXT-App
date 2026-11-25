@@ -72,10 +72,18 @@ DO $$ DECLARE t text; BEGIN
 END $$;
 
 -- Status liczony z dat (zawsze aktualny, także bez logowania): odnowiona > zakończona > zbliża się koniec (≤ 30 dni) > aktywna.
-CREATE OR REPLACE VIEW policies_v AS
+-- Anulowanie błędnie wpisanej polisy (audyt 24.11.2026): wyłączona z sum, przypomnień i list do odnowienia, historia zachowana.
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS cancel_reason text NOT NULL DEFAULT '';
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS cancelled_by uuid REFERENCES users(id);
+-- Widok tworzony od nowa przy każdym starcie: p.* rozwija się w kolumny tabeli, więc po dodaniu kolumn
+-- CREATE OR REPLACE nie mógłby zmienić ich kolejności. Widok nie przechowuje danych i nic od niego nie zależy.
+DROP VIEW IF EXISTS policies_v;
+CREATE VIEW policies_v AS
 SELECT p.*, c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email, c.kind AS customer_kind,
   (p.end_date - (now() AT TIME ZONE 'Europe/Warsaw')::date) AS days_left,
-  CASE WHEN p.renewed_by IS NOT NULL THEN 'odnowiona'
+  CASE WHEN p.cancelled_at IS NOT NULL THEN 'anulowana'
+       WHEN p.renewed_by IS NOT NULL THEN 'odnowiona'
        WHEN p.closed_at IS NOT NULL OR p.end_date < (now() AT TIME ZONE 'Europe/Warsaw')::date THEN 'zakonczona'
        WHEN p.end_date - (now() AT TIME ZONE 'Europe/Warsaw')::date <= 30 THEN 'konczy_sie'
        ELSE 'aktywna' END AS status

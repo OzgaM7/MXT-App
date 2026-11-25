@@ -50,7 +50,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', c => b
     for (const [p, b, m] of [['automatyzacje'], ['automatyzacje/raport-dzienny', { enabled: true, time: '07:30' }, 'PUT'], ['automatyzacje/raport-dzienny/uruchom', {}], ['automatyzacje/reguly', { name: 'x', event: 'raport.dzienny', action: 'email' }],
       ['automatyzacje/tokeny', { name: 'x', scopes: ['poczta'] }], ['automatyzacje/test-poczty', { to: 'a@b.pl' }]])
       for (const c of [U, K]) eq((await call(p, b, c, m)).s, 403, `użytkownik → /api/${p} = 403`);
-    eq((await call('bi', null, U)).s, 200, 'BI dla użytkownika'); eq((await call('ai/karta-wynikow', null, K)).s, 200, 'karta wyników dla użytkownika');
+    eq((await call('bi', null, U)).s, 403, 'BI – tylko role finansowe (pracownik biura 403)'); eq((await call('bi', null, A)).s, 200, 'BI dla roli finansowej'); eq((await call('ai/karta-wynikow', null, K)).s, 200, 'karta wyników dla użytkownika');
     eq((await call('komunikacja', null, U)).s, 200, 'Communication Hub dla użytkownika');
 
     // --- dzienny raport: walidacja, harmonogram, e-mail, brak duplikatu ---
@@ -145,7 +145,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', c => b
     if (testRun) eq((await call(`ai/uruchomienia/${testRun.id}/ocena`, { rating: 1 }, U)).s, 404, 'testów promptu się nie ocenia');
 
     // --- BI ---
-    const bi = (await call('bi', null, U)).j;
+    const bi = (await call('bi', null, A)).j;
     eq(bi.months.length, 12); ok(bi.oferty.wyslane_razem >= 2, 'BI: oferty'); ok(Array.isArray(bi.sprzedaz_kraje) && 'terminowosc_pct' in bi.montaze, 'BI: wskaźniki');
 
     // --- Langfuse (atrapa ingestion API) ---

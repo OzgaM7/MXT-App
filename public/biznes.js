@@ -39,7 +39,17 @@
     { submit: c ? 'Zapisz' : 'Dodaj klienta', wide: true, onSubmit: async f => {
       const b = { kind: val(f, 'kind'), name: val(f, 'name'), country: val(f, 'country'), tax_id: val(f, 'tax_id'), language: val(f, 'language'), address: val(f, 'address'),
         email: val(f, 'email'), phone: val(f, 'phone'), notes: val(f, 'notes'), contacts: linesToContacts(val(f, 'contacts')), departments: [...f.querySelectorAll('[name=dep]:checked')].map(x => x.value) };
-      const r = c ? await api('klienci/' + c.id, b, 'PATCH') : await api('klienci', b);
+      let r;
+      if (c) r = await api('klienci/' + c.id, { ...b, updated_at: c.updated_at }, 'PATCH');
+      else {
+        // Ten sam NIP albo nazwa z tym samym telefonem / e-mailem – świadoma decyzja zamiast duplikatu.
+        try { r = await api('klienci', b); }
+        catch (e) {
+          if (!(e.data && e.data.duplikat)) throw e;
+          if (!window.confirm(e.data.error + '\n\nOK – dodaj nowego klienta mimo to.\nAnuluj – wróć do formularza.')) throw new Error('Nie dodano – klient „' + e.data.istniejacy.name + '” jest już w CRM.');
+          r = await api('klienci', { ...b, potwierdz_duplikat: true });
+        }
+      }
       toast(c ? 'Klient zapisany.' : 'Klient dodany do CRM.'); if (after) after(r);
     } });
   }
@@ -69,8 +79,25 @@
       ${(c.part_orders || []).length ? sec('Zamówienia części', table(['Numer', 'Data', 'Status', { t: 'Wartość', num: 1 }], c.part_orders.map(o => `<tr><td><button type="button" class="linkish" data-goto="/dzial/sprzedaz-czesci-i-eksport?tab=zamowienia&o=${esc(o.id)}">${esc(o.number)}</button></td>
         <td>${esc(fd(o.order_date))}</td><td>${chip(o.status, o.status_label || o.status)}</td><td class="num">${esc(pln(o.total_net))}</td></tr>`), '')) : ''}
       ${sec('Historia kontaktów', `<button type="button" class="btn btn-secondary btn-sm" id="cc-note">Dodaj wpis</button>` + (c.communications.length ? `<ol class="comm">${c.communications.map(m => `<li><b>${esc(CHAN[m.channel])}${m.direction !== 'wewnetrzna' ? ' · ' + (m.direction === 'wychodzaca' ? 'wychodząca' : 'przychodząca') : ''}</b> · ${esc(fdt(m.created_at))}${m.created_by_login ? ' · ' + esc(m.created_by_login) : ''}<div><b>${esc(m.subject)}</b></div>${m.body ? `<div class="muted small pre-wrap">${esc(m.body)}</div>` : ''}</li>`).join('')}</ol>` : '<p class="empty-inline">Brak wpisów.</p>'))}
-      <div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="cc-edit">Edytuj dane klienta</button></div>`, { wide: true });
-    box.querySelector('#cc-edit').addEventListener('click', () => customerForm(c, after));
+      ${c.archived_at ? `<p class="notice">${c.anonymized_at ? 'Dane osobowe klienta zostały zanonimizowane ' + esc(fdt(c.anonymized_at)) + '.' : 'Klient w archiwum od ' + esc(fdt(c.archived_at)) + (c.archive_reason ? ' – ' + esc(c.archive_reason) : '') + '. Nie pojawia się na listach ani w wyszukiwarce.'}</p>` : ''}
+      <div class="ap-actions">${c.anonymized_at ? '' : '<button type="button" class="btn btn-secondary btn-sm" id="cc-edit">Edytuj dane klienta</button>'}
+        ${c.archived_at ? (c.anonymized_at ? '' : '<button type="button" class="btn btn-secondary btn-sm" id="cc-restore">Przywróć z archiwum</button>') : '<button type="button" class="btn btn-secondary btn-sm" id="cc-arch">Archiwizuj</button>'}
+        ${U().has('customers.delete') ? `<button type="button" class="btn btn-ghost btn-sm" id="cc-del">Usuń klienta</button>${c.anonymized_at ? '' : '<button type="button" class="btn btn-ghost btn-sm" id="cc-anon">Anonimizuj dane (RODO)</button>'}` : ''}</div>`, { wide: true });
+    const on = (sel, fn) => { const el = box.querySelector(sel); if (el) el.addEventListener('click', fn); };
+    const done = msg => { toast(msg); document.getElementById('modal').hidden = true; if (after) after(); };
+    on('#cc-edit', () => customerForm(c, after));
+    on('#cc-arch', () => modal('Archiwizuj klienta – ' + c.name, `<p>Klient zniknie z list i wyszukiwarki. Jego historia (zlecenia, faktury, polisy) zostaje i można go przywrócić z archiwum.</p>${field('ar-r', 'Powód (opcjonalnie)', '<input id="ar-r" name="r" maxlength="300">')}`,
+      { submit: 'Archiwizuj', onSubmit: async f => { await api('klienci/' + c.id + '/archiwizuj', { powod: val(f, 'r') }); done('Klient przeniesiony do archiwum.'); } }));
+    on('#cc-restore', async () => { try { await api('klienci/' + c.id + '/przywroc', {}); done('Klient przywrócony z archiwum.'); } catch (e) { toast(e.message); } });
+    on('#cc-del', async () => {
+      const rel = await api('klienci/' + c.id + '/powiazania').catch(() => []);
+      if (rel.length) { toast('Klient ma historię (' + rel.map(([l, n]) => l + ': ' + n).join(', ') + ') – nie można go usunąć. Użyj „Archiwizuj” albo „Anonimizuj dane”.'); return; }
+      modal('Usunąć klienta?', `<p>Klient <b>${esc(c.name)}</b> nie ma żadnych zleceń, faktur, polis ani dokumentów. Usunięcie jest nieodwracalne.</p>`,
+        { submit: 'Usuń klienta', danger: true, onSubmit: async () => { await api('klienci/' + c.id, null, 'DELETE'); done('Klient usunięty.'); } });
+    });
+    on('#cc-anon', () => modal('Anonimizacja danych – ' + c.name, `<p>Na żądanie klienta (RODO) usuniemy jego dane osobowe: nazwę, NIP, adres, telefon, e-mail, osoby kontaktowe, notatki i historię kontaktów. Numery i kwoty faktur oraz polis zostają (obowiązek przechowywania dokumentacji). Operacja jest nieodwracalna.</p>
+      ${field('an-r', 'Podstawa (np. „żądanie klienta z 24.11.2026”)', '<input id="an-r" name="r" required maxlength="300">')}`,
+      { submit: 'Anonimizuj dane', danger: true, onSubmit: async f => { await api('klienci/' + c.id + '/anonimizuj', { powod: val(f, 'r') }); done('Dane osobowe klienta zanonimizowane.'); } }));
     box.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => { document.getElementById('modal').hidden = true; U().go(b.dataset.goto); }));
     box.querySelector('#cc-note').addEventListener('click', () => modal('Nowy wpis – ' + c.name, `
       <div class="field-row">${field('n-ch', 'Kanał', `<select id="n-ch" name="channel">${['telefon', 'email', 'spotkanie', 'notatka'].map(k => `<option value="${k}">${CHAN[k]}</option>`).join('')}</select>`)}
@@ -78,7 +105,7 @@
       ${field('n-sub', 'Temat', '<input id="n-sub" name="subject" required maxlength="300">')}${field('n-body', 'Treść', '<textarea id="n-body" name="body" rows="4"></textarea>')}`,
     { submit: 'Zapisz wpis', onSubmit: async f => { await api('klienci/' + c.id + '/komunikacja', { channel: val(f, 'channel'), direction: val(f, 'direction'), subject: val(f, 'subject'), body: val(f, 'body') }); toast('Wpis zapisany.'); customerCard(id, after); } }));
   }
-  const crmFilter = { q: '', rodzaj: '' };
+  const crmFilter = { q: '', rodzaj: '', archiwum: '', limit: '' };
   async function crmPage(root, path, alive) {
     const body = U().frame(root, path, 'CRM', 'Klienci, osoby kontaktowe i historia współpracy we wszystkich działach.', '<button type="button" class="btn btn-primary" id="crm-new">Nowy klient</button>');
     const reload = () => U().render(path, root);
@@ -91,13 +118,18 @@
     if (!alive()) return;
     body.innerHTML = `<form class="toolbar" id="crm-f"><label class="visually-hidden" for="crm-q">Szukaj</label><input id="crm-q" name="q" class="select-sm" placeholder="Szukaj: nazwa, NIP, adres, e-mail" value="${esc(crmFilter.q)}">
         <label class="visually-hidden" for="crm-k">Rodzaj</label><select id="crm-k" name="rodzaj" class="select-sm"><option value="">Wszyscy klienci</option>${Object.entries(KIND).map(([k, v]) => `<option value="${k}"${crmFilter.rodzaj === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <label class="visually-hidden" for="crm-a">Archiwum</label><select id="crm-a" name="archiwum" class="select-sm"><option value="">Aktywni</option><option value="1"${crmFilter.archiwum ? ' selected' : ''}>Archiwum</option></select>
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button></form>
-      <section class="panel">${table(['Klient', 'Rodzaj', 'Kraj', 'Kontakt', { t: 'Budynki', num: 1 }, { t: 'Oferty', num: 1 }, 'Reklamacje'], list.map(c => `<tr>
-        <td><button type="button" class="linkish" data-cust="${c.id}">${esc(c.name)}</button>${c.departments.length ? `<div class="muted small">${c.departments.map(d => esc(DEP[d])).join(', ')}</div>` : ''}</td>
+      <section class="panel">${table(['Klient', 'Rodzaj', 'Kraj', 'Kontakt', { t: 'Budynki', num: 1 }, { t: 'Oferty', num: 1 }, 'Reklamacje', ''], list.map(c => `<tr>
+        <td><button type="button" class="linkish" data-cust="${c.id}">${esc(c.name)}</button>${c.departments.length ? `<div class="muted small">${c.departments.map(d => esc(DEP[d])).join(', ')}</div>` : ''}${c.archived_at ? `<div class="muted small">w archiwum od ${esc(fd(c.archived_at))}</div>` : ''}</td>
         <td>${esc(KIND[c.kind])}</td><td>${esc(c.country)}</td><td class="small">${esc(c.email || c.phone || '–')}</td><td class="num">${esc(c.buildings)}</td><td class="num">${esc(c.offers)}</td>
-        <td>${c.open_complaints ? chip('warn', c.open_complaints + ' otwarte') : '<span class="muted">–</span>'}</td></tr>`), 'Brak klientów. Dodaj pierwszego klienta przyciskiem „Nowy klient”.')}</section>`;
-    body.querySelector('#crm-f').addEventListener('submit', e => { e.preventDefault(); crmFilter.q = val(e.target, 'q').trim(); crmFilter.rodzaj = val(e.target, 'rodzaj'); reload(); });
+        <td>${c.open_complaints ? chip('warn', c.open_complaints + ' otwarte') : '<span class="muted">–</span>'}</td>
+        <td class="nowrap">${c.anonymized_at ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-cedit="${c.id}">Edytuj</button>`}<button type="button" class="btn btn-ghost btn-sm" data-cust="${c.id}">Karta</button></td></tr>`),
+      crmFilter.archiwum ? 'Archiwum jest puste.' : 'Brak klientów. Dodaj pierwszego klienta przyciskiem „Nowy klient”.')}</section>`;
+    body.querySelector('#crm-f').addEventListener('submit', e => { e.preventDefault(); crmFilter.q = val(e.target, 'q').trim(); crmFilter.rodzaj = val(e.target, 'rodzaj'); crmFilter.archiwum = val(e.target, 'archiwum'); crmFilter.limit = ''; reload(); });
+    U().moreBar(body, list, n => { crmFilter.limit = n; reload(); });
     body.querySelectorAll('[data-cust]').forEach(b => b.addEventListener('click', () => customerCard(b.dataset.cust, reload)));
+    body.querySelectorAll('[data-cedit]').forEach(b => b.addEventListener('click', () => customerForm(list.find(x => x.id === b.dataset.cedit), reload)));
   }
 
   // ---------- Finance Intelligence ----------
@@ -130,7 +162,7 @@
       });
     });
   }
-  const finFilter = { dzial: '', rodzaj: '', status: '' };
+  const finFilter = { dzial: '', rodzaj: '', status: '', limit: '' };
   async function financeForm(defaults, after) {
     const [rates, M] = await Promise.all([api('kursy'), U().meta()]);
     const [projects, buildings] = await Promise.all([api('d1/kontrakty').catch(() => []), api('d1/budynki').catch(() => [])]);
@@ -147,9 +179,16 @@
         ${field('f-bud', 'Budynek (dział 1)', `<select id="f-bud" name="building_id">${opts(buildings, defaults.building_id, b => b.name + ', ' + b.address, b => b.id, '– brak –')}</select>`)}</div>
       ${defaults.installation_id ? `<input type="hidden" name="installation_id" value="${esc(defaults.installation_id)}"><p class="muted small">Wpis zostanie przypisany do zlecenia montażowego.</p>` : ''}`,
     { submit: 'Zapisz wpis', wide: true, onSubmit: async f => {
-      await api('finanse', { department_id: val(f, 'department_id'), kind: val(f, 'kind'), category: val(f, 'category'), entry_date: val(f, 'entry_date'), description: val(f, 'description'),
+      const body = { department_id: val(f, 'department_id'), kind: val(f, 'kind'), category: val(f, 'category'), entry_date: val(f, 'entry_date'), description: val(f, 'description'),
         amount: val(f, 'amount'), currency: val(f, 'currency'), invoice_no: val(f, 'invoice_no'), due_date: val(f, 'due_date'), paid_at: val(f, 'paid_at'),
-        project_id: val(f, 'project_id') || null, building_id: val(f, 'building_id') || null, installation_id: val(f, 'installation_id') || null });
+        project_id: val(f, 'project_id') || null, building_id: val(f, 'building_id') || null, installation_id: val(f, 'installation_id') || null };
+      // Ostrzeżenie przed podwójnym przychodem (zlecenie już rozliczone / ta sama faktura) – zapis dopiero po świadomym potwierdzeniu.
+      try { await api('finanse', body); }
+      catch (e) {
+        if (!(e.data && e.data.duplikat)) throw e;
+        if (!window.confirm(e.message.replace(' Zapisz ponownie z potwierdzeniem, jeśli to osobny przychód.', '') + '\n\nCzy to osobny przychód i zapisać go mimo to?')) throw new Error('Nie zapisano – możliwy podwójny przychód.');
+        await api('finanse', { ...body, potwierdz_duplikat: true });
+      }
       toast('Wpis zapisany.'); if (after) after();
     } });
   }
@@ -204,7 +243,8 @@
         <div id="fi-rows"></div></section>`;
     const rows = body.querySelector('#fi-rows'); rows.innerHTML = financeRows(list, reload, rows);
     bindChart(body, s.series);
-    body.querySelector('#fi-f').addEventListener('submit', e => { e.preventDefault(); finFilter.dzial = val(e.target, 'dzial'); finFilter.rodzaj = val(e.target, 'rodzaj'); finFilter.status = val(e.target, 'status'); reload(); });
+    body.querySelector('#fi-f').addEventListener('submit', e => { e.preventDefault(); finFilter.dzial = val(e.target, 'dzial'); finFilter.rodzaj = val(e.target, 'rodzaj'); finFilter.status = val(e.target, 'status'); finFilter.limit = ''; reload(); });
+    U().moreBar(body, list, n => { finFilter.limit = n; reload(); });
   }
 
   // ---------- Knowledge Base ----------
@@ -390,6 +430,6 @@
   window.MXT_BIZ = { offersPanel, complaintsPanel, agentsStrip, customerForm, customerCard, financeForm, financeRows, table, opts, pdfLink, fileToB64, DEP, OFFER_ST, CPL_ST, pln };
   const reg = window.MXT_MODULES.register;
   reg('/crm', { title: 'CRM', perm: 'tasks.use', render: crmPage }, { tab: true, after: '/ai-workforce' });
-  reg('/finanse', { title: 'Finance Intelligence', perm: 'tasks.use', render: financePage }, { tab: true, after: '/crm' });
+  reg('/finanse', { title: 'Finance Intelligence', perm: 'finance.view', render: financePage }, { tab: true, after: '/crm' });
   reg('/wiedza', { title: 'Knowledge Base', perm: 'tasks.use', render: kbPage }, { tab: true, after: '/finanse' });
 })();

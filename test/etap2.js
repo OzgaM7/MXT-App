@@ -38,7 +38,7 @@ const mock = http.createServer((req, res) => {
 });
 
 (async () => {
-  const P1 = 4100 + Math.floor(Math.random() * 400), P2 = P1 + 500, base = 'http://localhost:' + P1, base2 = 'http://localhost:' + P2;
+  const P1 = require('./_setup').testPort(4100, 400), P2 = P1 + 500, base = 'http://localhost:' + P1, base2 = 'http://localhost:' + P2;
   await new Promise(r => mock.listen(0, r));
   const s1 = startServer(P1, { AI_MODE: 'test' });
   const s2 = startServer(P2, { AI_MODE: 'live', ANTHROPIC_API_KEY: 'sk-ant-test', ANTHROPIC_BASE_URL: 'http://localhost:' + mock.address().port });

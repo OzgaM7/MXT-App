@@ -29,10 +29,31 @@ założenia i status etapów: [`docs/ERP-AUDYT-I-PLAN.md`](docs/ERP-AUDYT-I-PLAN
 monter, serwisant, odczyty (pracownicy terenowi), dostęp ograniczony. Uprawnienia sprawdza backend (`lib/rbac.js`),
 menu pokazuje tylko dostępne moduły.
 
-**Migracje ERP:** `db/016`–`db/020` – idempotentne i wyłącznie dodające (uruchamiane przy każdym starcie).
+**Migracje ERP:** `db/016`–`db/021` – idempotentne i wyłącznie dodające (uruchamiane przy każdym starcie).
 
-**Testy ERP:** `test/erp-fundamenty.js`, `test/erp-operacje.js`, `test/erp-ubezpieczenia.js`, `test/erp-czesci-finanse.js`
-(część `npm test`, łącznie 1205 sprawdzeń całego zestawu) oraz test interfejsu w przeglądarce `npm run test:ui`
+### Zarządzanie danymi: edycja, usuwanie, archiwum, anonimizacja (poprawki po audycie 24.11.2026)
+
+Zasada: **rekord bez historii można usunąć, rekord z historią się archiwizuje lub anuluje** – historia rozliczeń,
+dokumentów i audytu zostaje. Każda operacja trafia do dziennika zdarzeń (kto, kiedy, powód).
+
+| Dane | Edycja | Usunięcie (tylko bez historii) | Gdy jest historia |
+|---|---|---|---|
+| Klienci (CRM) | „Edytuj” w każdym wierszu listy i w karcie | kierownik / właściciel / administrator | **Archiwizuj** (znika z list i wyszukiwarki, „Przywróć”), **Anonimizuj dane (RODO)** – usuwa dane osobowe i historię kontaktów, numery i kwoty dokumentów zostają |
+| Pracownicy | „Edytuj” w wierszu: dane kadrowe + „Edytuj konto” (imię, kontakt, role) | administrator | **Wyłącz konto** (wylogowanie, brak logowania, wpisy zostają); lista domyślnie bez wyłączonych, filtr „Pokaż wyłączone konta” |
+| Budynki | „Edytuj” w wierszu i w karcie | biuro | **Archiwizuj** / „Przywróć” |
+| Polisy | „Edytuj” w karcie | – | **Anuluj polisę (błędny wpis)** z powodem – status „Anulowana”, poza sumami, zyskiem działu i przypomnieniami; „Cofnij anulowanie” |
+| Dokumenty magazynowe | – | – | **Anuluj dokument** z powodem – cofa stany i średni koszt (tylko gdy towar nie został wydany ani zarezerwowany), poza kosztami i zobowiązaniami |
+| Zamówienia zakupu | „Edytuj szkic” | – | „Anuluj” (szkic / zamówione) |
+
+Ochrona danych przy wpisywaniu: kontrola sumy NIP, ostrzeżenie o duplikacie klienta (ten sam NIP albo nazwa z tym samym
+telefonem lub e-mailem – także po odświeżeniu strony w trakcie zapisu), budynku (ten sam adres) i przychodu (ta sama faktura
+albo zlecenie już rozliczone) – zapis duplikatu tylko po świadomym potwierdzeniu. Jednoczesna edycja tego samego rekordu
+(klient, budynek, montaż, polisa, zlecenie serwisowe): zapis z nieaktualnej wersji formularza kończy się komunikatem zamiast
+nadpisania cudzych zmian. Długie listy pokazują „Pokazano X z Y” i „Pokaż więcej”; tabele sortują się po kliknięciu nagłówka.
+Dane finansowe (Finance Intelligence, rentowność, BI, marże budynków i montaży, eksporty finansowe) – tylko role z dostępem do finansów.
+
+**Testy ERP:** `test/erp-fundamenty.js`, `test/erp-operacje.js`, `test/erp-ubezpieczenia.js`, `test/erp-czesci-finanse.js`,
+`test/audyt-poprawki.js` (testy regresyjne poprawek po audycie; część `npm test`, łącznie ok. 1347 sprawdzeń całego zestawu) oraz test interfejsu w przeglądarce `npm run test:ui`
 (Playwright + Chromium: procesy z formularzy, wszystkie zakładki modułów ERP bez błędów, telefon, ograniczenia ról).
 
 **Kopia bazy:** `DATABASE_URL='…' sh scripts/kopia-bazy.sh` (szczegóły w `docs/WDROZENIE-ERP.md`).

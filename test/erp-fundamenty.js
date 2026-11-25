@@ -66,7 +66,7 @@ const eq = (a, b, m) => { assert.equal(a, b, m); passed++; };
     r = await call('klienci?q=' + encodeURIComponent('Test_'), null, BIU.c); ok(r.j.every(c => c.name.includes('Test_')), '„_” wyszukiwane dosłownie');
 
     // ---------- karta klienta 360° ----------
-    const b = (await call('d1/budynki', { customer_id: JAN, name: '[T-ERP3] Dom Kowalskich', address: 'ul. Testowa 5', city: 'Zielona Góra', units_count: 1 }, BIU.c)).j; ids.buildings.push(b.id);
+    const b = (await call('d1/budynki', { customer_id: JAN, name: '[T-ERP3] Dom Kowalskich', address: 'ul. Testowa 5', city: 'Zielona Góra', units_count: 1, potwierdz_duplikat: true }, BIU.c)).j; ids.buildings.push(b.id);
     const inst = (await call('d1/montaze', { building_id: b.id, planned_date: '2031-05-04', devices_planned: 6 }, BIU.c)).j; ids.installations.push(inst.id);
     ok(inst.number, 'montaż u klienta');
     const so = (await call('serwisy', { customer_id: JAN, building_id: b.id, client_name: '[T-ERP3] Jan Kowalski', address: 'ul. Testowa 5', city: 'Zielona Góra',

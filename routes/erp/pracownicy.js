@@ -7,6 +7,7 @@ const { audit } = require('../../lib/audit');
 const { can, requirePerm, ROLES } = require('../../lib/rbac');
 const { tx, r2 } = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const mgr = requirePerm('employees.manage'), own = requirePerm('time.own');
@@ -14,7 +15,7 @@ const TODAY = `(now() AT TIME ZONE 'Europe/Warsaw')::date`;
 const REL = { installation: 'installations', service_order: 'service_orders', reading: 'readings', project: 'projects' };
 
 r.get('/pracownicy', mgr, wrap(async (req, res) => {
-  const from = V.date(req.query.od, 'Od') || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const from = V.date(req.query.od, 'Od') || plToday(-30);
   const q = await pool.query(`SELECT u.id, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.position, u.hourly_rate::float AS hourly_rate, u.employment, u.hired_at, u.hr_notes,
       (SELECT count(*)::int FROM service_orders o WHERE o.assigned_to = u.id AND o.status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta')) AS serwisy_otwarte,
       (SELECT count(*)::int FROM reading_schedules s WHERE s.assigned_to = u.id AND s.is_active AND s.next_due <= ${TODAY} + 30) AS odczyty_30d,
@@ -42,7 +43,7 @@ r.patch('/pracownicy/:id', idParam, mgr, wrap(async (req, res) => {
 
 // ---------- nieobecności (dostępność w kalendarzu) ----------
 r.get('/nieobecnosci', mgr, wrap(async (req, res) => {
-  const from = V.date(req.query.od, 'Od') || new Date().toISOString().slice(0, 10);
+  const from = V.date(req.query.od, 'Od') || plToday();
   res.json((await pool.query(`SELECT a.*, coalesce(nullif(u.full_name, ''), u.login) AS name FROM absences a JOIN users u ON u.id = a.user_id WHERE a.date_to >= $1 ORDER BY a.date_from LIMIT 500`, [from])).rows);
 }));
 r.post('/nieobecnosci', mgr, wrap(async (req, res) => {
@@ -66,7 +67,7 @@ r.delete('/nieobecnosci/:id', idParam, mgr, wrap(async (req, res) => {
 
 // ---------- czas pracy ----------
 r.get('/czas', own, wrap(async (req, res) => {
-  const from = V.date(req.query.od, 'Od') || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), to = V.date(req.query.do, 'Do') || '2999-12-31';
+  const from = V.date(req.query.od, 'Od') || plToday(-30), to = V.date(req.query.do, 'Do') || '2999-12-31';
   const team = can(req.user, 'employees.manage');
   const p = [from, to], w = ['t.work_date >= $1', 't.work_date <= $2'];
   if (!team) { p.push(req.user.id); w.push(`t.user_id = $${p.length}`); }
@@ -84,7 +85,7 @@ r.post('/czas', own, wrap(async (req, res) => {
   const b = req.body || {}, team = can(req.user, 'employees.manage');
   const uid = b.user_id && team ? V.uuid(b.user_id, 'Pracownik') : req.user.id;
   const date = V.date(b.work_date, 'Data', true), hours = r2(V.num(b.hours, 0.25, 24, 'Liczba godzin'));
-  if (date > new Date(Date.now() + 864e5).toISOString().slice(0, 10)) throw bad(400, 'Nie można wpisać czasu pracy w przyszłości.');
+  if (date > plToday(1)) throw bad(400, 'Nie można wpisać czasu pracy w przyszłości.');
   const relType = V.oneOf(b.related_type || 'inne', ['installation', 'service_order', 'reading', 'project', 'inne'], 'Czego dotyczy');
   const out = await tx(async c => {
     let relId = null, projectId = V.uuid(b.project_id, 'Projekt');

@@ -8,7 +8,7 @@ const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const P = require('../../lib/erp/policies');
 const { tx } = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, checkFresh, listLimit, withTotal } = require('../_util');
 
 const r = express.Router();
 const use = requirePerm('insurance.manage');
@@ -70,11 +70,12 @@ r.get('/polisy', use, wrap(async (req, res) => {
   const p = [], w = [], q = req.query;
   filters(q, p, w);
   if (P.STATUS[q.status]) { p.push(q.status); w.push(`v.status = $${p.length}`); }
+  else w.push('v.cancelled_at IS NULL');   // anulowane (błędne wpisy) tylko po wybraniu statusu „Anulowana”
   if (q.koniec_od) { p.push(V.date(q.koniec_od, 'Koniec od')); w.push(`v.end_date >= $${p.length}`); }
   if (q.koniec_do) { p.push(V.date(q.koniec_do, 'Koniec do')); w.push(`v.end_date <= $${p.length}`); }
   if (q.konczy_dni) { p.push(Math.round(V.num(q.konczy_dni, 0, 3660, 'Dni'))); w.push(`v.status = 'konczy_sie' AND v.days_left <= $${p.length}`); }
   const sort = { koniec: 'v.end_date', podpisanie: 'v.signed_at DESC', kwota: 'v.total_amount DESC', klient: 'lower(v.customer_name)' }[q.sort] || 'v.signed_at DESC';
-  res.json((await pool.query(`${SELECT} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY ${sort}, v.created_at DESC LIMIT 1000`, p)).rows.map(withLabel));
+  res.json((await pool.query(`${withTotal(SELECT)} ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY ${sort}, v.created_at DESC LIMIT ${listLimit(req, 1000)}`, p)).rows.map(withLabel));
 }));
 r.get('/polisy/slowniki', use, wrap(async (req, res) => {
   const [i, t] = await Promise.all([
@@ -85,7 +86,7 @@ r.get('/polisy/slowniki', use, wrap(async (req, res) => {
 }));
 // Polisy do odnowienia: kończące się w ciągu 30 dni oraz zakończone w ostatnich 30 dniach bez odnowienia (nieoznaczone ręcznie).
 r.get('/polisy/do-odnowienia', use, wrap(async (req, res) => {
-  const rows = (await pool.query(`${SELECT} WHERE v.renewed_by IS NULL AND v.closed_at IS NULL AND v.end_date <= ${TODAY} + ${P.REMIND_DAYS} AND v.end_date >= ${TODAY} - 30
+  const rows = (await pool.query(`${SELECT} WHERE v.renewed_by IS NULL AND v.closed_at IS NULL AND v.cancelled_at IS NULL AND v.end_date <= ${TODAY} + ${P.REMIND_DAYS} AND v.end_date >= ${TODAY} - 30
     ORDER BY v.end_date`)).rows.map(withLabel);
   res.json(rows);
 }));
@@ -94,7 +95,8 @@ r.get('/polisy/do-odnowienia', use, wrap(async (req, res) => {
 r.get('/polisy/podsumowanie', use, wrap(async (req, res) => {
   const p = [], w = [], q = req.query;
   filters(q, p, w);
-  const where = w.length ? 'WHERE ' + w.join(' AND ') : '';
+  w.push('v.cancelled_at IS NULL');   // anulowane polisy (błędne wpisy) nie wchodzą do sum
+  const where = 'WHERE ' + w.join(' AND ');
   const [s, ins, typ, months, soon, rem] = await Promise.all([
     pool.query(`SELECT count(*)::int AS liczba, coalesce(sum(v.total_amount), 0)::float AS kwota, coalesce(sum(v.profit), 0)::float AS zysk,
         coalesce(avg(v.total_amount), 0)::float AS srednia_kwota, coalesce(avg(v.margin_pct), 0)::float AS srednia_marza,
@@ -105,7 +107,7 @@ r.get('/polisy/podsumowanie', use, wrap(async (req, res) => {
     pool.query(`SELECT v.insurer AS k, count(*)::int n, sum(v.total_amount)::float kwota, sum(v.profit)::float zysk FROM policies_v v ${where} GROUP BY 1 ORDER BY 4 DESC LIMIT 20`, p),
     pool.query(`SELECT v.insurance_type AS k, count(*)::int n, sum(v.total_amount)::float kwota, sum(v.profit)::float zysk FROM policies_v v ${where} GROUP BY 1 ORDER BY 4 DESC LIMIT 20`, p),
     pool.query(`SELECT to_char(date_trunc('month', v.signed_at), 'YYYY-MM') AS m, count(*)::int n, sum(v.total_amount)::float kwota, sum(v.profit)::float zysk
-      FROM policies_v v ${where ? where + ' AND' : 'WHERE'} v.signed_at >= date_trunc('month', ${TODAY}) - interval '11 months' GROUP BY 1 ORDER BY 1`, p),
+      FROM policies_v v ${where} AND v.signed_at >= date_trunc('month', ${TODAY}) - interval '11 months' GROUP BY 1 ORDER BY 1`, p),
     pool.query(`SELECT count(*)::int n FROM policies_v v WHERE v.status = 'konczy_sie'`),
     pool.query(`SELECT count(*)::int AS nowe FROM policy_reminders WHERE handled_at IS NULL`)
   ]);
@@ -162,6 +164,7 @@ async function linkRenewal(c, oldId, neu, userId) {
   if (old.id === neu.id) throw bad(400, 'Polisa nie może odnawiać samej siebie.');
   if (old.customer_id !== neu.customer_id) throw bad(400, 'Odnowienie dotyczy polisy tego samego klienta.');
   if (old.renewed_by) throw bad(409, 'Ta polisa jest już oznaczona jako odnowiona.');
+  if (old.cancelled_at || neu.cancelled_at) throw bad(409, 'Anulowanej polisy nie można powiązać z odnowieniem.');
   if (neu.start_date < old.start_date) throw bad(400, 'Nowa polisa musi zaczynać się nie wcześniej niż poprzednia.');
   await c.query('UPDATE policies SET renewed_by = $2, renewed_at = now(), updated_at = now() WHERE id = $1', [old.id, neu.id]);
   await c.query('UPDATE policies SET previous_id = $2, updated_at = now() WHERE id = $1', [neu.id, old.id]);
@@ -196,6 +199,8 @@ r.patch('/polisy/:id', idParam, use, wrap(async (req, res) => {
   const x = await tx(async c => {
     const before = (await c.query('SELECT * FROM policies WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
     if (!before) throw bad(404, 'Nie znaleziono polisy.');
+    if (before.cancelled_at) throw bad(409, 'Polisa jest anulowana. Przywróć ją, aby wprowadzić zmiany.');
+    checkFresh(before.updated_at, b.updated_at);
     if (o.customer_id && !(await c.query('SELECT 1 FROM customers WHERE id = $1', [o.customer_id])).rows[0]) throw bad(400, 'Nie znaleziono klienta.');
     const merged = { ...before, ...o };
     const str = v => v instanceof Date ? v.toISOString().slice(0, 10) : v == null ? '' : String(v);
@@ -230,7 +235,7 @@ r.post('/polisy/:id/zakoncz', idParam, use, wrap(async (req, res) => {
   await tx(async c => {
     const x = (await c.query('SELECT * FROM policies WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
     if (!x) throw bad(404, 'Nie znaleziono polisy.');
-    if (x.closed_at || x.renewed_by) throw bad(409, 'Polisa jest już zakończona lub odnowiona.');
+    if (x.closed_at || x.renewed_by || x.cancelled_at) throw bad(409, 'Polisa jest już zakończona, odnowiona lub anulowana.');
     await c.query('UPDATE policies SET closed_at = now(), close_reason = $2, updated_at = now() WHERE id = $1', [x.id, reason]);
     await c.query(`UPDATE policy_reminders SET handled_at = now(), handled_by = $2, handled_note = $3 WHERE policy_id = $1 AND handled_at IS NULL`, [x.id, req.user.id, 'Polisa zakończona: ' + reason]);
     await P.event(c, x.id, 'zakonczenie', { note: reason, userId: req.user.id });
@@ -244,6 +249,45 @@ r.post('/polisy/:id/wznow', idParam, use, wrap(async (req, res) => {
     if (!x) throw bad(409, 'Polisa nie była oznaczona jako zakończona.');
     await P.event(c, x.id, 'wznowienie', { note: 'Cofnięto oznaczenie „zakończona”', userId: req.user.id });
   });
+  res.json({ ok: true });
+}));
+// Anulowanie polisy wpisanej przez pomyłkę (np. nie doszła do skutku, wpisana dwa razy): polisa zostaje w rejestrze ze statusem
+// „Anulowana”, z powodem i autorem, ale nie liczy się do sum, wyników działu, zysku ani przypomnień. Można ją przywrócić.
+// Anulowanie odnowienia przywraca poprzedniej polisie stan „nieodnowiona” (wraca na listę do odnowienia).
+r.post('/polisy/:id/anuluj', idParam, use, wrap(async (req, res) => {
+  const reason = V.str((req.body || {}).powod, 500, true, 'Powód anulowania');
+  if (reason.length < 3) throw bad(400, 'Powód anulowania: podaj co najmniej 3 znaki.');
+  const x = await tx(async c => {
+    const p = (await c.query('SELECT * FROM policies WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!p) throw bad(404, 'Nie znaleziono polisy.');
+    if (p.cancelled_at) throw bad(409, 'Polisa jest już anulowana.');
+    if (p.renewed_by) throw bad(409, 'Polisa ma odnowienie – najpierw anuluj polisę, która ją odnawia.');
+    await c.query('UPDATE policies SET cancelled_at = now(), cancel_reason = $2, cancelled_by = $3, updated_at = now() WHERE id = $1', [p.id, reason, req.user.id]);
+    await c.query(`UPDATE policy_reminders SET handled_at = now(), handled_by = $2, handled_note = $3 WHERE policy_id = $1 AND handled_at IS NULL`, [p.id, req.user.id, 'Polisa anulowana: ' + reason]);
+    await c.query(`UPDATE notifications SET read_at = coalesce(read_at, now()) WHERE related_type = 'policy' AND related_id = $1`, [p.id]);
+    if (p.previous_id) {
+      await c.query('UPDATE policies SET renewed_by = NULL, renewed_at = NULL, updated_at = now() WHERE id = $1 AND renewed_by = $2', [p.previous_id, p.id]);
+      await P.event(c, p.previous_id, 'zmiana', { note: `Anulowano odnowienie (polisa ${p.number}) – polisa znów czeka na odnowienie`, userId: req.user.id });
+    }
+    await P.event(c, p.id, 'anulowanie', { note: reason, userId: req.user.id });
+    return p;
+  });
+  await audit(req, 'polisa.anulowanie', { resource: 'policies', resourceId: x.id, details: { numer: x.number, powod: reason, kwota: Number(x.total_amount), zysk: Number(x.profit) } });
+  res.json({ ok: true });
+}));
+r.post('/polisy/:id/przywroc', idParam, use, wrap(async (req, res) => {
+  const x = await tx(async c => {
+    const p = (await c.query('SELECT * FROM policies WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!p || !p.cancelled_at) throw bad(409, 'Polisa nie jest anulowana.');
+    await c.query(`UPDATE policies SET cancelled_at = NULL, cancel_reason = '', cancelled_by = NULL, updated_at = now() WHERE id = $1`, [p.id]);
+    if (p.previous_id) {   // ponowne powiązanie z poprzednią polisą, jeśli w międzyczasie nie odnowiono jej inną
+      const prev = (await c.query('UPDATE policies SET renewed_by = $2, renewed_at = now(), updated_at = now() WHERE id = $1 AND renewed_by IS NULL RETURNING id', [p.previous_id, p.id])).rows[0];
+      if (!prev) await c.query('UPDATE policies SET previous_id = NULL WHERE id = $1', [p.id]);
+    }
+    await P.event(c, p.id, 'przywrocenie', { note: 'Cofnięto anulowanie', userId: req.user.id });
+    return p;
+  });
+  await audit(req, 'polisa.przywrocenie', { resource: 'policies', resourceId: x.id, details: { numer: x.number } });
   res.json({ ok: true });
 }));
 // Dokument polisy: PDF albo skan (JPG/PNG) do 10 MB, z wersjami (każdy nowy plik = nowa wersja).

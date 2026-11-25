@@ -252,7 +252,7 @@
   window.MXT_ETAP4 = { rateBar, bindRate };
   const reg = window.MXT_MODULES.register;
   reg('/komunikacja', { title: 'Communication Hub', perm: 'tasks.use', render: chPage }, { tab: true, after: '/wiedza' });
-  reg('/bi', { title: 'Business Intelligence', perm: 'tasks.use', render: biPage }, { tab: true, after: '/komunikacja' });
+  reg('/bi', { title: 'Business Intelligence', perm: 'finance.view', render: biPage }, { tab: true, after: '/komunikacja' });
   reg('/karta-wynikow', { title: 'Karta wyników agentów', perm: 'command.view', render: scorecardPage }, { tab: true, after: '/ai-workforce' });
   reg('/automatyzacje', { title: 'Automatyzacje', perm: 'automations.manage', render: autoPage, admin: true }, { tab: true });
 })();

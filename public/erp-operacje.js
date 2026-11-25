@@ -132,7 +132,7 @@
     return go(`${D1}?tab=odczyty`);
   }
   function settleForm(x, after) {
-    const due = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+    const due = U().dayPlus(14);
     modal(`Rozlicz: ${TYPES[x.type].toLowerCase()} ${x.number}`, `<p class="muted">${esc(x.object_name || '')} · ${esc(x.address || '')}</p>
       <div class="field-row">${field('st-k', 'Kwota netto (PLN)', '<input id="st-k" name="kwota" type="number" min="0" step="0.01" inputmode="decimal" required>')}
         ${field('st-f', 'Numer faktury', '<input id="st-f" name="faktura" maxlength="60" placeholder="np. FV/2026/11/015">')}</div>

@@ -6,7 +6,7 @@ const { pool } = require('../db');
 const { audit } = require('../lib/audit');
 const { requirePerm } = require('../lib/rbac');
 const S = require('../lib/service');
-const { wrap, idParam, V, bad, sendPdf } = require('./_util');
+const { wrap, idParam, V, bad, sendPdf, checkFresh } = require('./_util');
 
 const office = express.Router(), own = express.Router();
 const manage = requirePerm('service.manage'), approve = requirePerm('service.approve'), tech = requirePerm('service.own');
@@ -154,6 +154,7 @@ office.get('/:id', idParam, manage, wrap(async (req, res) => {
 office.patch('/:id', idParam, manage, wrap(async (req, res) => {
   const x = await withOrder(req, req.params.id, null, async (client, o) => {
     if (['zatwierdzone', 'rozliczone', 'zamkniete', 'anulowane'].includes(o.status)) throw bad(409, 'Zlecenie jest zamknięte – nie można go edytować.');
+    checkFresh(o.updated_at, (req.body || {}).updated_at);
     const f = await fields(req.body || {}, true, client);
     const keys = Object.keys(f).filter(k => String(f[k] == null ? '' : f[k]) !== String(o[k] == null ? '' : o[k] instanceof Date ? o[k].toISOString().slice(0, 10) : o[k]));
     if (!keys.length) throw bad(400, 'Brak zmian.');

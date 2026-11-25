@@ -9,6 +9,7 @@ const docs = require('../../lib/docs');
 const pdf = require('../../lib/pdf');
 const { tx } = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const anyOf = perms => async (req, res, next) => perms.some(p => can(req.user, p)) ? next() : requirePerm(perms[0])(req, res, next);
@@ -122,7 +123,7 @@ async function devicesFor(c, s, date) {
     FROM devices d LEFT JOIN units u ON u.id = d.unit_id LEFT JOIN device_readings cur ON cur.device_id = d.id AND cur.read_at = $3
     WHERE d.building_id = $1 AND d.status = 'zamontowane' AND d.type = ANY($2::text[]) ORDER BY u.number NULLS LAST, d.location, d.serial_no`, [s.building_id, SCOPE_TYPES[s.scope], date])).rows;
 }
-const dateParam = v => V.date(v || new Date().toISOString().slice(0, 10), 'Data odczytu', true);
+const dateParam = v => V.date(v || plToday(), 'Data odczytu', true);
 r.get('/odczyty/:id/urzadzenia', idParam, rd, wrap(async (req, res) => {
   const s = await scheduleOf(pool, req.params.id), date = dateParam(req.query.data);
   res.json({ schedule: s, read_at: date, devices: await devicesFor(pool, s, date) });

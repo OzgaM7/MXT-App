@@ -12,7 +12,7 @@ let passed = 0;
 const ok = (c, m) => { assert.ok(c, m); passed++; };
 const eq = (a, b, m) => { assert.equal(a, b, m); passed++; };
 const T = '[T5]', DEP = 'podzielniki-i-montaze';
-const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+const day = n => require('./_setup').warsawDay(n);   // jak aplikacja: data wg czasu polskiego
 
 (async () => {
   const PORT = 5700 + Math.floor(Math.random() * 250), base = 'http://localhost:' + PORT;
@@ -67,7 +67,7 @@ const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
     ok((await call('d1/ekipy', null, A)).j.find(c => c.id === crewA.id).installers.some(i => i.user_login === 't5.monter1'), 'ekipa pokazuje konto instalatora');
 
     // ---------- montaże i powiadomienia o przydziałach ----------
-    const bld = (await call('d1/budynki', { name: T + ' Blok', address: 'Testowa 1', city: 'Zielona Góra', units_count: 40 }, A)).j; created.buildings.push(bld.id);
+    const bld = (await call('d1/budynki', { name: T + ' Blok', address: 'Testowa 1', city: 'Zielona Góra', units_count: 40, potwierdz_duplikat: true }, A)).j; created.buildings.push(bld.id);
     r = await call('d1/montaze', { building_id: bld.id, crew_id: crewA.id, planned_date: day(3), scope: 'Montaż podzielników', devices_planned: 120, materials: [{ nazwa: 'Plomby', ilosc: 150, jm: 'szt.' }] }, A);
     eq(r.s, 201); const iA = r.j; created.installations.push(iA.id);
     const iB = (await call('d1/montaze', { building_id: bld.id, crew_id: crewB.id, planned_date: day(5) }, A)).j; created.installations.push(iB.id);
@@ -182,7 +182,8 @@ const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
     r = await call('eksport/d1/montaze?od=' + day(0), null, A); ws = (await wbOf(r)).getWorksheet('Montaże');
     const row = ws.getRows(2, ws.rowCount - 1).find(x => x.getCell(1).value === iB.number);
     ok(row && row.getCell(8).value instanceof Date && row.getCell(7).value === T + ' Ekipa B', 'montaże: daty jako daty Excela');
-    for (const l of ['budynki', 'kontrakty', 'rentownosc', 'finanse']) eq((await call('eksport/d1/' + l, null, U)).s, 200, `eksport ${l} (pracownik biura)`);
+    for (const l of ['budynki', 'kontrakty']) eq((await call('eksport/d1/' + l, null, U)).s, 200, `eksport ${l} (pracownik biura)`);
+    for (const l of ['rentownosc', 'finanse']) eq((await call('eksport/d1/' + l, null, U)).s, 403, `eksport ${l} – tylko role finansowe (pracownik biura 403)`);
     eq((await wbOf(await call('eksport/d1/rentownosc', null, A))).worksheets.length, 3, 'rentowność: 3 arkusze');
     eq((await call('eksport/d1/nieistniejace', null, A)).s, 404);
     eq((await call('eksport/d1/__proto__', null, A)).s, 404, 'nazwy zestawień tylko z listy');

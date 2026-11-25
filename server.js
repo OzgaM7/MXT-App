@@ -22,6 +22,9 @@ app.use(['/api/serwisy/:id/zdjecia', '/api/serwisy/:id/protokol', '/api/moje/ser
 // Asystent telefoniczny: rozmowa z pełną transkrypcją od bota.
 app.use('/api/asystent/webhook', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '200kb' }));
+// Znak NUL (\u0000) w danych: PostgreSQL go nie przyjmuje (błąd 500) – odrzucamy od razu z czytelnym komunikatem.
+const hasNul = v => typeof v === 'string' ? v.includes('\u0000') : v && typeof v === 'object' ? Object.entries(v).some(([k, x]) => k.includes('\u0000') || hasNul(x)) : false;
+app.use('/api', (req, res, next) => hasNul(req.body) ? res.status(400).json({ error: 'Dane zawierają niedozwolony znak (NUL). Usuń go i zapisz ponownie.' }) : next());
 app.use(cookieParser());
 // Ochrona przed CSRF: zapisujące żądania API muszą być JSON-em (formularz z innej strony nie ustawi tego nagłówka).
 app.use('/api', (req, res, next) => {
@@ -33,6 +36,8 @@ app.use('/api', (req, res, next) => {
 app.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
+    // HSTS: przeglądarka łączy się wyłącznie przez HTTPS (bez przekierowania z http, które da się przechwycić). Tylko na połączeniach HTTPS.
+    ...(process.env.COOKIE_SECURE === '1' || req.secure || req.get('x-forwarded-proto') === 'https' ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
     'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; " +
       "frame-src 'self' https://www.youtube-nocookie.com https://player.vimeo.com; media-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
   });
@@ -178,6 +183,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
 app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.use((err, req, res, next) => {
+  // Błędy klienta z parsera JSON (nie są awarią serwera): uszkodzony JSON → 400, za duże dane → 413.
+  if (err && err.type === 'entity.too.large') return res.status(413).json({ error: 'Za duże dane w jednym zapisie. Zmniejsz plik lub podziel dane.' });
+  if (err && ['entity.parse.failed', 'encoding.unsupported', 'charset.unsupported', 'request.aborted'].includes(err.type)) return res.status(400).json({ error: 'Nieprawidłowy format danych (JSON).' });
+  if (err && err.status >= 400 && err.status < 500 && err.expose) return res.status(err.status).json({ error: 'Nieprawidłowe żądanie.' });
   console.error(err);
   res.status(500).json({ error: 'Błąd serwera. Spróbuj ponownie.' });
 });

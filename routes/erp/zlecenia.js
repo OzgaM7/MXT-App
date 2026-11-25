@@ -9,6 +9,7 @@ const docs = require('../../lib/docs');
 const pdf = require('../../lib/pdf');
 const { tx, r2 } = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V, sendPdf } = require('../_util');
+const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
 const view = requirePerm('departments.view'), money = requirePerm('finance.view'), mgr = requirePerm('employees.manage');
@@ -54,7 +55,7 @@ r.post('/zlecenia/rozlicz', money, wrap(async (req, res) => {
   const b = req.body || {}, t = SETTLE[b.typ];
   if (!t) throw bad(400, 'Typ zlecenia: nieprawidłowa wartość.');
   const id = V.uuid(b.id, 'Zlecenie', true), amount = r2(V.num(b.kwota, 0, 1e9, 'Kwota netto')), invoice = V.str(b.faktura, 60);
-  const date = V.date(b.data, 'Data rozliczenia') || new Date().toISOString().slice(0, 10);
+  const date = V.date(b.data, 'Data rozliczenia') || plToday();
   if (amount > 0 && !invoice) throw bad(400, 'Podaj numer faktury (albo kwotę 0 – zlecenie bez opłaty).');
   const out = await tx(async c => {
     const x = (await c.query(`SELECT * FROM ${t.table} WHERE id = $1 FOR UPDATE`, [id])).rows[0];
@@ -263,7 +264,7 @@ r.post('/projekty/:id/protokol-miesieczny', idParam, view, wrap(async (req, res)
     const MON = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
     const label = MON[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4);
     const d = (s) => s ? new Date(String(s).slice(0, 10) + 'T12:00:00').toLocaleDateString('pl-PL') : '–';
-    const file = await pdf.report({ title: 'Protokół miesięczny wykonanych prac', number, date: new Date().toISOString().slice(0, 10), dept: DEP,
+    const file = await pdf.report({ title: 'Protokół miesięczny wykonanych prac', number, date: plToday(), dept: DEP,
       left: [['Zleceniodawca', `${p.customer_name || '–'}${p.customer_address ? '\n' + p.customer_address : ''}`], ['Projekt', `${p.number} – ${p.title}`]],
       right: [['Okres', label], ['Podsumowanie', `montaże: ${inst.length}, urządzenia: ${inst.reduce((s, x) => s + x.devices, 0)}, serwisy: ${srv.length}, odczyty: ${rd.length}, godziny pracy: ${hours}`]],
       sections: [

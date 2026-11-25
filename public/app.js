@@ -14,16 +14,22 @@
 
   // ---------- API ----------
   async function api(path, body, method) {
-    const r = await fetch('/api/' + path, {
-      method: method || (body ? 'POST' : 'GET'),
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'same-origin', cache: 'no-store'
-    });
+    let r;
+    try {
+      r = await fetch('/api/' + path, {
+        method: method || (body ? 'POST' : 'GET'),
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: 'same-origin', cache: 'no-store'
+      });
+    } catch (netErr) {
+      // Brak sieci albo przerwane połączenie – formularz zostaje otwarty, dane nie przepadają.
+      const e = new Error('Brak połączenia z internetem. Sprawdź połączenie i spróbuj ponownie – wpisane dane zostały w formularzu.'); e.status = 0; e.offline = true; throw e;
+    }
     const j = await r.json().catch(() => ({}));
     if (r.status === 401 && path !== 'login' && path !== 'me' && user) { setUser(null); go('/', true); }
     if (r.status === 403 && j.code === 'must_change_password' && user) { user.mustChangePassword = true; go('/zmiana-hasla', true); }
-    if (!r.ok) { const e = new Error(j.error || 'Błąd połączenia (' + r.status + ')'); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error(j.error || 'Błąd połączenia (' + r.status + ')'); e.status = r.status; e.data = j; throw e; }
     return j;
   }
 

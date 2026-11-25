@@ -86,7 +86,7 @@ const login = async l => { const r = await call('login', { login: l, password: '
 
     // --- 5. poziom 3: reguła tylko dla operacji odwracalnych, w limitach ---
     eq((await call('approval-rules', { operation_type: 'wydatek', max_amount: 100, max_per_day: 1, valid_until: '2099-01-01' }, A.cookie)).s, 400, 'wydatek nieodwracalny – brak poziomu 3');
-    const until = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    const until = require('./_setup').warsawDay(1);
     r = await call('approval-rules', { operation_type: 'rabat.udziel', description: '[TEST] reguła', max_amount: 200, currency: 'PLN', max_per_day: 1, valid_until: until }, A.cookie);
     eq(r.s, 201); const rule = r.j;
     r = await call('approvals', { operation_type: 'rabat.udziel', title: '[TEST] Rabat 150', amount: 150 }, U.cookie);

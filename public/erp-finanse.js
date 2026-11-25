@@ -49,7 +49,7 @@
   const per = { od: presets().rok[1], do: today() };
 
   async function finPage(root, path, alive) {
-    const sp = new URLSearchParams(location.search);
+    const sp = U().urlParams();
     if (sp.get('tab') && FTABS.some(t => t[0] === sp.get('tab'))) ftab = sp.get('tab');
     const body = U().deptFrame(root, 'Finanse firmy', FTABS, ftab, t => { ftab = t; reload(); });
     const reload = () => U().render(path, root);

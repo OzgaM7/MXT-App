@@ -7,8 +7,8 @@
   const fd = v => U().fd(v), fdt = v => U().fdt(v), field = (...a) => U().field(...a), val = (f, n) => U().val(f, n), modal = (...a) => U().modal(...a);
   const pln = n => n == null ? '–' : U().money(n, 'PLN');
   const PATH = '/dzial/ubezpieczenia';
-  const ST_CLS = { aktywna: 'ok', konczy_sie: 'warn', zakonczona: 'off', odnowiona: 'zatwierdzona' };
-  const ST = { aktywna: 'Aktywna', konczy_sie: 'Zbliża się koniec', zakonczona: 'Zakończona', odnowiona: 'Odnowiona' };
+  const ST_CLS = { aktywna: 'ok', konczy_sie: 'warn', zakonczona: 'off', odnowiona: 'zatwierdzona', anulowana: 'deny' };
+  const ST = { aktywna: 'Aktywna', konczy_sie: 'Zbliża się koniec', zakonczona: 'Zakończona', odnowiona: 'Odnowiona', anulowana: 'Anulowana' };
   const TABS = [['pulpit', 'Pulpit', '', 'Pulpit'], ['polisy', 'Polisy', '', 'Polisy'], ['odnowienia', 'Polisy do odnowienia', '', 'Odnowienia'], ['przypomnienia', 'Przypomnienia', '', 'Przypomn.'], ['klienci', 'Klienci', '', 'Klienci']];
   const IC_EXTRA = { odnowienia: 'odczyty', przypomnienia: 'czas', klienci: 'ekipy', polisy: 'rozliczenia', pulpit: 'pulpit' };
   const td = (label, html, cls) => `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ''}>${html}</td>`;
@@ -19,7 +19,7 @@
   const pct = v => v == null ? '–' : String(Math.round(Number(v) * 100) / 100).replace('.', ',') + '%';
   const days = n => n === 1 ? '1 dzień' : n + ' dni';
   let tab = 'pulpit';
-  const st = { q: '', status: '', towarzystwo: '', rodzaj: '', od: '', do: '', sort: '', klient: '', klient_name: '' };
+  const st = { q: '', status: '', towarzystwo: '', rodzaj: '', od: '', do: '', sort: '', klient: '', klient_name: '', limit: '' };
   const pst = { od: '', do: '', towarzystwo: '', rodzaj: '' };
 
   // Podgląd zysku: arytmetyka całkowita (grosze, marża × 10 000) – ten sam wynik co serwer i baza.
@@ -31,7 +31,7 @@
   }
 
   async function page(root, path, alive) {
-    const sp = new URLSearchParams(location.search);
+    const sp = U().urlParams();
     if (sp.get('tab') && TABS.some(t => t[0] === sp.get('tab'))) tab = sp.get('tab');
     const body = U().deptFrame(root, 'Ubezpieczenia', TABS, tab, t => { tab = t; reload(); });
     const reload = () => U().render(path, root);
@@ -104,7 +104,8 @@
         ${sel('lso', 'sort', 'Sortowanie', [['', 'Najnowsze'], ['koniec', 'Koniec ochrony'], ['kwota', 'Kwota'], ['klient', 'Klient']])}
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button>${st.klient ? '<button type="button" class="btn btn-ghost btn-sm" id="lk-x">Wszyscy klienci</button>' : ''}<div class="pol-sv"></div></form>
       <section class="panel">${ctable(['Polisa', 'Klient', 'Rodzaj', 'Ochrona', { t: 'Kwota polisy', num: 1 }, { t: 'Marża', num: 1 }, { t: 'Zysk', num: 1 }, 'Status'], list.map(p => row(p)), 'Brak polis dla wybranych filtrów. Dodaj polisę przyciskiem „Dodaj polisę”.')}</section>`;
-    body.querySelector('#lf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; for (const k of ['q', 'status', 'towarzystwo', 'rodzaj', 'od', 'do', 'sort']) st[k] = val(f, k).trim(); reload(); });
+    body.querySelector('#lf').addEventListener('submit', e => { e.preventDefault(); const f = e.target; for (const k of ['q', 'status', 'towarzystwo', 'rodzaj', 'od', 'do', 'sort']) st[k] = val(f, k).trim(); st.limit = ''; reload(); });
+    U().moreBar(body, list, n => { st.limit = n; reload(); });
     const kx = body.querySelector('#lk-x'); if (kx) kx.addEventListener('click', () => { st.klient = ''; st.klient_name = ''; reload(); });
     U().savedViews(body.querySelector('.pol-sv'), 'polisy', () => ({ ...st }), p => { for (const k of Object.keys(st)) st[k] = typeof p[k] === 'string' ? p[k] : ''; reload(); });
     body.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => policyCard(b.dataset.p, reload)));
@@ -160,7 +161,7 @@
   // ---------- karta polisy ----------
   const FIELD_PL = { number: 'Numer', insurer: 'Towarzystwo', insurance_type: 'Rodzaj', description: 'Opis', signed_at: 'Podpisanie', start_date: 'Początek ochrony', end_date: 'Koniec ochrony',
     total_amount: 'Kwota polisy', margin_pct: 'Marża %', profit: 'Zysk', notes: 'Uwagi', customer_id: 'Klient', kwota: 'Kwota', marza: 'Marża', zysk: 'Zysk', renewed_by: 'Odnowiona polisą', previous: 'Poprzednia polisa' };
-  const EVL = { utworzenie: 'Rejestracja', zmiana: 'Zmiana', odnowienie: 'Odnowienie', zakonczenie: 'Zakończenie', wznowienie: 'Cofnięcie zakończenia', dokument: 'Dokument', przypomnienie: 'Przypomnienie', obsluga_przypomnienia: 'Obsługa przypomnienia' };
+  const EVL = { utworzenie: 'Rejestracja', zmiana: 'Zmiana', odnowienie: 'Odnowienie', zakonczenie: 'Zakończenie', wznowienie: 'Cofnięcie zakończenia', dokument: 'Dokument', przypomnienie: 'Przypomnienie', obsluga_przypomnienia: 'Obsługa przypomnienia', anulowanie: 'Anulowanie', przywrocenie: 'Cofnięcie anulowania' };
   async function policyCard(id, after) {
     const p = await api('polisy/' + id);
     const refresh = () => { policyCard(id, after); if (after) after(); };
@@ -174,14 +175,16 @@
         ${p.previous_number ? `<dt>Zastępuje</dt><dd><button type="button" class="linkish" data-p="${esc(p.previous_id)}">${esc(p.previous_number)}</button></dd>` : ''}
         ${p.renewed_by_number ? `<dt>Odnowiona polisą</dt><dd><button type="button" class="linkish" data-p="${esc(p.renewed_by)}">${esc(p.renewed_by_number)}</button></dd>` : ''}
         ${p.closed_at ? `<dt>Zakończona</dt><dd>${esc(fdt(p.closed_at))} – ${esc(p.close_reason)}</dd>` : ''}
+        ${p.cancelled_at ? `<dt>Anulowana</dt><dd>${esc(fdt(p.cancelled_at))} – ${esc(p.cancel_reason)} <span class="muted small">(nie liczy się do sum, zysku ani przypomnień)</span></dd>` : ''}
         <dt>Dokument polisy</dt><dd>${p.document_id ? `<a class="linkish" href="/api/dokumenty/${esc(p.document_id)}/plik" target="_blank" rel="noopener">Otwórz</a> · <a class="linkish" href="/api/dokumenty/${esc(p.document_id)}/plik?pobierz=1">Pobierz</a>` : 'brak'}
           <label class="btn btn-ghost btn-sm" for="pc-file">${p.document_id ? 'Nowa wersja' : 'Załącz plik'}</label><input id="pc-file" type="file" accept="application/pdf,image/jpeg,image/png" class="visually-hidden"></dd>
         <dt>Zarejestrował</dt><dd>${esc(p.created_by_login || '–')} · ${esc(fdt(p.created_at))}</dd></dl>
-      <div class="ap-actions"><button type="button" class="btn btn-primary btn-sm" id="pc-edit">Edytuj</button>
+      <div class="ap-actions">${p.cancelled_at ? '<button type="button" class="btn btn-secondary btn-sm" id="pc-uncancel">Cofnij anulowanie</button>' : `<button type="button" class="btn btn-primary btn-sm" id="pc-edit">Edytuj</button>
         ${!p.renewed_by && p.status !== 'odnowiona' ? '<button type="button" class="btn btn-secondary btn-sm" id="pc-renew">Odnów (nowa polisa)</button>' : ''}
-        ${!p.renewed_by && p.customer_policies.some(x => !x.previous_id && x.id !== p.id) ? '<button type="button" class="btn btn-secondary btn-sm" id="pc-link">Powiąż z istniejącą polisą</button>' : ''}
+        ${!p.renewed_by && p.customer_policies.some(x => !x.previous_id && x.id !== p.id && x.status !== 'anulowana') ? '<button type="button" class="btn btn-secondary btn-sm" id="pc-link">Powiąż z istniejącą polisą</button>' : ''}
         ${!p.closed_at && !p.renewed_by ? '<button type="button" class="btn btn-ghost btn-sm" id="pc-end">Oznacz jako zakończoną</button>' : ''}
-        ${p.closed_at ? '<button type="button" class="btn btn-ghost btn-sm" id="pc-reopen">Cofnij zakończenie</button>' : ''}</div>
+        ${p.closed_at ? '<button type="button" class="btn btn-ghost btn-sm" id="pc-reopen">Cofnij zakończenie</button>' : ''}
+        ${!p.renewed_by ? '<button type="button" class="btn btn-ghost btn-sm" id="pc-cancel">Anuluj polisę (błędny wpis)</button>' : ''}`}</div>
       ${p.reminders.length ? `<h3 class="panel-sub">Przypomnienia</h3><ul class="tool-list">${p.reminders.map(r => `<li>${esc(fdt(r.generated_at))} – koniec ${esc(fd(r.end_date))}, zostało ${esc(days(r.days_left))} · ${r.handled_at ? 'obsłużone' + (r.handled_note ? ': ' + esc(r.handled_note) : '') : '<b class="txt-warn">do obsłużenia</b>'}</li>`).join('')}</ul>` : ''}
       ${p.customer_policies.length ? `<h3 class="panel-sub">Inne polisy klienta</h3><ul class="tool-list">${p.customer_policies.map(x => `<li><button type="button" class="linkish" data-p="${esc(x.id)}">${esc(x.number)}</button> · ${esc(x.insurer)} · ${esc(x.insurance_type)} · do ${esc(fd(x.end_date))} ${chip(ST_CLS[x.status], ST[x.status])}</li>`).join('')}</ul>` : ''}
       <h3 class="panel-sub">Historia zmian</h3><ol class="comm">${p.events.map(e => `<li><b>${esc(EVL[e.kind] || e.kind)}</b> · ${esc(fdt(e.created_at))}${e.login ? ' · ' + esc(e.login) : ''}
@@ -189,7 +192,11 @@
     const $ = s => box.querySelector(s);
     $('#pc-cust').addEventListener('click', () => window.MXT_BIZ.customerCard(p.customer_id, after));
     box.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => policyCard(b.dataset.p, after)));
-    $('#pc-edit').addEventListener('click', () => policyForm(p, refresh));
+    if ($('#pc-edit')) $('#pc-edit').addEventListener('click', () => policyForm(p, refresh));
+    if ($('#pc-cancel')) $('#pc-cancel').addEventListener('click', () => modal('Anuluj polisę ' + p.number, `<p>Użyj, gdy polisa została wpisana przez pomyłkę albo nie doszła do skutku. Zostaje w rejestrze ze statusem „Anulowana” i powodem, ale nie liczy się do sum, zysku działu ani przypomnień${p.previous_number ? ' – a polisa ' + esc(p.previous_number) + ' wróci na listę do odnowienia' : ''}. Anulowanie można cofnąć.</p>
+      ${field('pa-r', 'Powód anulowania', '<input id="pa-r" name="r" required maxlength="500" placeholder="np. wpisana dwa razy, klient zrezygnował przed podpisaniem">')}`,
+      { submit: 'Anuluj polisę', danger: true, cancel: 'Wróć', onSubmit: async f => { await api('polisy/' + p.id + '/anuluj', { powod: val(f, 'r') }); toast('Polisa anulowana.'); refresh(); } }));
+    if ($('#pc-uncancel')) $('#pc-uncancel').addEventListener('click', async () => { try { await api('polisy/' + p.id + '/przywroc', {}); toast('Cofnięto anulowanie polisy.'); refresh(); } catch (e) { toast(e.message); } });
     if ($('#pc-renew')) $('#pc-renew').addEventListener('click', () => policyForm(null, refresh, p));
     if ($('#pc-end')) $('#pc-end').addEventListener('click', () => endForm(p, refresh));
     if ($('#pc-reopen')) $('#pc-reopen').addEventListener('click', async () => { try { await api('polisy/' + p.id + '/wznow', {}); toast('Cofnięto zakończenie.'); refresh(); } catch (e) { toast(e.message); } });
@@ -242,7 +249,7 @@
       if (p) {
         if (cid && cid !== p.customer_id) b.customer_id = cid;
         b.powod_zmiany = val(f, 'powod');
-        await api('polisy/' + p.id, b, 'PATCH'); toast('Polisa zapisana.'); after(); return;
+        await api('polisy/' + p.id, { ...b, updated_at: p.updated_at }, 'PATCH'); toast('Polisa zapisana.'); after(); return;
       }
       if (cid) b.customer_id = cid;
       else if (!f.querySelector('#pf-nc').hidden) b.new_customer = { kind: val(f, 'nc_kind'), name: val(f, 'nc_name'), phone: val(f, 'nc_phone'), email: val(f, 'nc_email'), address: val(f, 'nc_address') };
