@@ -9,6 +9,7 @@ const { notify } = require('../lib/notify');
 const R = require('../lib/readings');
 const xlsx = require('../lib/xlsx');
 const { wrap, idParam, V, bad } = require('./_util');
+const usun = require('../lib/usun');
 
 const r = express.Router();
 const use = requirePerm('readings.manage'), adm = requirePerm('readings.admin');
@@ -277,5 +278,9 @@ r.post('/:id/cofnij', idParam, adm, wrap(async (req, res) => {
     res.json(upd);
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
+
+// Harmonogram odczytów dodany przez pomyłkę – usunięcie tylko, gdy nie ma żadnego wykonanego odczytu.
+usun.register(r, '', use, { table: 'reading_schedules', action: 'odczyt.harmonogram.usuniecie', what: () => 'Harmonogram odczytów',
+  hint: 'Wyłącz harmonogram (odczyty przestaną być planowane, historia zostanie).' });
 
 module.exports = r;

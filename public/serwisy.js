@@ -240,6 +240,7 @@
       material: !['anulowane', 'zamkniete'].includes(o.status) && window.MXT_ERP && { html: btn('material', 'Wydaj materiał'), run: () => window.MXT_ERP.issueForm({ related_type: 'service_order', related_id: o.id, title: o.number }, again) },
       czas: !['anulowane', 'zamkniete'].includes(o.status) && window.MXT_ERP && U().has('time.own') && { html: btn('czas', 'Czas pracy'), run: () => window.MXT_ERP.timeForm({ related_type: 'service_order', related_id: o.id, title: o.number }, again) },
       edytuj: open && { html: btn('edytuj', 'Edytuj dane'), run: () => orderForm(o, techs, again) },
+      usun: ['nowe', 'oczekuje', 'przypisane', 'zaplanowane', 'anulowane'].includes(o.status) && !o.protocol_document_id && { html: U().delBtn('serwisy/' + o.id, 'Zlecenie ' + o.number, 'Anuluj zlecenie (z powodem) – historia zostanie.') },
       anuluj: open && { html: btn('anuluj', 'Anuluj zlecenie', 'btn-ghost'), run: () => ask('Anulować zlecenie ' + o.number + '?', 'Powód anulowania', base + '/anuluj', v => ({ powod: v }), again, { danger: true, submit: 'Anuluj zlecenie' }) }
     });
   }

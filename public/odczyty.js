@@ -168,6 +168,7 @@
         ${s.is_active ? '<button type="button" class="btn btn-primary btn-sm" data-a="done">Wykonano</button>' : ''}
         <button type="button" class="btn btn-secondary btn-sm" data-a="devread">Odczyty urządzeń</button>
         <button type="button" class="btn btn-secondary btn-sm" data-a="edit">Edytuj</button>
+        ${U().delBtn('odczyty/' + s.id, 'Harmonogram odczytów – ' + (s.address || ''), 'Wyłącz harmonogram (Edytuj → nieaktywny) – historia odczytów zostanie.')}
         ${active && U().has('readings.admin') ? '<button type="button" class="btn btn-ghost btn-sm" data-a="undo">Cofnij ostatni odczyt</button>' : ''}</div>
       <p class="label-sm">Historia odczytów (${s.history.length})</p>
       ${s.history.length ? `<ol class="timeline">${s.history.map(h => `<li><span class="tl-dot${h.cancelled_at ? ' tl-odrzucenie' : h.result === 'czesciowy' ? ' tl-zmiana' : ' tl-wykonanie'}"></span><div>

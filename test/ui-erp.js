@@ -24,7 +24,7 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     return j;
   };
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
-  const users = [], PASS = 'Ui-Test-2026x', tag = Date.now().toString().slice(-6), T = { items: [], suppliers: [], customers: [], buildings: [] };
+  const users = [], PASS = 'Ui-Test-2026x', tag = Date.now().toString().slice(-6), T = { items: [], suppliers: [], customers: [], buildings: [], crews: [] };
   let browser;
   try {
     for (let i = 0; i < 80; i++) { try { await fetch(BASE + '/api/health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
@@ -172,6 +172,20 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
     ok(!(await pool.query('SELECT 1 FROM installations WHERE id = $1', [MON2.id])).rows.length, 'okno edycji montażu: „Usuń montaż”');
 
+    // ---------- Ekipy: edycja instalatora i wspólny przycisk „Usuń” (sprawdzenie historii, potwierdzenie, odświeżenie) ----------
+    const CRW = await call('d1/ekipy', { name: '[T-UI] Ekipa ' + tag }, AC); T.crews.push(CRW.id);
+    const INS = await call('d1/instalatorzy', { name: '[T-UI] Instalator ' + tag, crew_id: CRW.id }, AC);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=ekipy'); await p.waitForSelector(`[data-inst="${INS.id}"]`);
+    await p.click(`[data-inst="${INS.id}"]`); await p.waitForSelector('#ie-n'); await p.fill('#ie-n', '[T-UI] Instalator zmieniony ' + tag);
+    await p.click('#modal-box [type=submit]'); await p.waitForSelector(`text=Instalator zmieniony ${tag}`);
+    ok(true, 'ekipy: edycja instalatora z listy');
+    await p.click(`[data-inst="${INS.id}"]`); await p.waitForSelector(`#modal-box [data-usun="d1/instalatorzy/${INS.id}"]`);
+    await p.click(`#modal-box [data-usun="d1/instalatorzy/${INS.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger');
+    await p.waitForSelector(`[data-inst="${INS.id}"]`, { state: 'detached' });
+    await p.click(`.wf-grid [data-usun="d1/ekipy/${CRW.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger');
+    await p.waitForSelector(`[data-usun="d1/ekipy/${CRW.id}"]`, { state: 'detached' });
+    ok(!(await pool.query('SELECT 1 FROM crews WHERE id = $1', [CRW.id])).rows.length, 'ekipy: usunięcie instalatora i pustej ekipy przyciskiem „Usuń”');
+
     // ---------- wszystkie zakładki modułów ERP: bez błędów JS i 5xx ----------
     const pages = ['/dzial/podzielniki-i-montaze', '/dzial/sprzedaz-czesci-i-eksport', '/dzial/ubezpieczenia', '/magazyn', '/finanse-firmy', '/pracownicy', '/moj-czas', '/szkolenia', '/pulpit-wlasciciela', '/crm', '/konta'];
     let tabs = 0;
@@ -230,6 +244,8 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await q(`DELETE FROM stock_items WHERE id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM suppliers WHERE id = ANY($1::uuid[])`, [T.suppliers]);
     await q(`DELETE FROM installations WHERE building_id = ANY($1::uuid[])`, [T.buildings]);
+    await q(`DELETE FROM installers WHERE crew_id = ANY($1::uuid[])`, [T.crews]);
+    await q(`DELETE FROM crews WHERE id = ANY($1::uuid[])`, [T.crews]);
     await q(`DELETE FROM buildings WHERE id = ANY($1::uuid[])`, [T.buildings]);
     await q(`DELETE FROM customers WHERE id = ANY($1::uuid[])`, [T.customers]);
     await q(`DELETE FROM user_views WHERE user_id = ANY($1::uuid[])`, [users]);

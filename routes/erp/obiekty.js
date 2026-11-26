@@ -10,6 +10,7 @@ const pdf = require('../../lib/pdf');
 const { tx } = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V } = require('../_util');
 const { plToday } = require('../../lib/dzis');
+const usun = require('../../lib/usun');
 
 const r = express.Router();
 const anyOf = perms => async (req, res, next) => perms.some(p => can(req.user, p)) ? next() : requirePerm(perms[0])(req, res, next);
@@ -223,5 +224,10 @@ r.post('/odczyty/:id/protokol', idParam, rd, wrap(async (req, res) => {
   await audit(req, 'odczyt.protokol', { resource: 'reading_schedules', resourceId: req.params.id, details: { protokol: out.number, data: date } });
   res.status(201).json(out);
 }));
+
+// Lokal dodany przez pomyłkę – usunięcie tylko bez urządzeń i zleceń; z historią – wyłączenie lokalu.
+usun.register(r, '/lokale', edit, { table: 'units', action: 'lokal.usuniecie', what: x => `Lokal ${x.number}`,
+  extra: [['urządzenia', 'SELECT count(*)::int FROM devices WHERE unit_id = $1'], ['zlecenia serwisowe', 'SELECT count(*)::int FROM service_orders WHERE unit_id = $1']],
+  hint: 'Wyłącz lokal – historia urządzeń i zleceń zostanie.' });
 
 module.exports = r;

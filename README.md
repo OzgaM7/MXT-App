@@ -43,7 +43,19 @@ dokumentów i audytu zostaje. Każda operacja trafia do dziennika zdarzeń (kto,
 | Budynki | „Edytuj” w wierszu i w karcie | biuro | **Archiwizuj** / „Przywróć” |
 | Polisy | „Edytuj” w karcie | – | **Anuluj polisę (błędny wpis)** z powodem – status „Anulowana”, poza sumami, zyskiem działu i przypomnieniami; „Cofnij anulowanie” |
 | Dokumenty magazynowe | – | – | **Anuluj dokument** z powodem – cofa stany i średni koszt (tylko gdy towar nie został wydany ani zarezerwowany), poza kosztami i zobowiązaniami |
-| Zamówienia zakupu | „Edytuj szkic” | – | „Anuluj” (szkic / zamówione) |
+| Zamówienia zakupu | „Edytuj szkic” | szkic lub anulowane bez przyjęć | „Anuluj” (szkic / zamówione) |
+| Montaże | ołówek / okno edycji | kosz w wierszu harmonogramu, „Usuń montaż” | status „Anulowany” (ekipa dostaje powiadomienie) |
+| Ekipy, instalatorzy | „Edytuj”, klik w nazwisko | „Usuń” | „Dezaktywuj” / „Instalator aktywny” |
+| Urządzenia, lokale | karta urządzenia, okno lokalu | „Usuń” | status urządzenia / „Lokal aktywny” |
+| Kontrakty, zlecenia serwisowe, harmonogramy odczytów | karty | „Usuń” (serwis: przed rozpoczęciem prac) | „Anulowany” / „Anuluj zlecenie” / harmonogram nieaktywny |
+| Oferty, reklamacje | karta oferty, lista reklamacji | „Usuń” (oferta niewysłana) | „Anulowana” / „Odrzucona” |
+| Zamówienia części | karta zamówienia | „Usuń” (nowe lub anulowane) | „Anuluj zamówienie” |
+| Pozycje magazynowe, dostawcy, magazyny | karty | „Usuń” (bez ruchów; magazyn główny MAG – nie) | „Wyłącz” |
+
+Usuwanie wszystkich powyższych działa według jednej zasady (`lib/usun.js`): serwer sprawdza historię wpisu (powiązania w bazie
+i dokumenty), a interfejs pokazuje wspólny przycisk „Usuń” – bez historii: potwierdzenie i usunięcie; z historią: komunikat
+z listą powiązań i podpowiedzią. Polisy i wpisy finansowe tylko się anuluje (z powodem) – usunięcie dokumentów finansowych
+zacierałoby ślad.
 
 Ochrona danych przy wpisywaniu: kontrola sumy NIP, ostrzeżenie o duplikacie klienta (ten sam NIP albo nazwa z tym samym
 telefonem lub e-mailem – także po odświeżeniu strony w trakcie zapisu), budynku (ten sam adres) i przychodu (ta sama faktura

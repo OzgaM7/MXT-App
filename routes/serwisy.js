@@ -7,6 +7,8 @@ const { audit } = require('../lib/audit');
 const { requirePerm } = require('../lib/rbac');
 const S = require('../lib/service');
 const { wrap, idParam, V, bad, sendPdf, checkFresh } = require('./_util');
+const usun = require('../lib/usun');
+const { notify } = require('../lib/notify');
 
 const office = express.Router(), own = express.Router();
 const manage = requirePerm('service.manage'), approve = requirePerm('service.approve'), tech = requirePerm('service.own');
@@ -319,5 +321,20 @@ own.get('/:id/protokol', idParam, tech, wrap(async (req, res) => {
   sendPdf(res, v.file_data, v.file_name || 'protokol.pdf', req.query.pobierz !== '1');
 }));
 shared(own, tech, req => req.user.id);
+
+// Zlecenie serwisowe wpisane przez pomyłkę (duplikat, test) – usunięcie tylko przed rozpoczęciem prac i bez zdjęć, materiałów,
+// czasu pracy, protokołu i finansów. Zgłoszenie telefoniczne, z którego powstało, zostaje (bez powiązania).
+usun.register(office, '', manage, { table: 'service_orders', action: 'serwis.usuniecie', what: x => `Zlecenie ${x.number}`, skip: ['phone_requests'],
+  extra: [['zdjęcia', 'SELECT count(*)::int FROM service_photos WHERE order_id = $1'],
+    ['wydania materiałów', `SELECT count(*)::int FROM stock_docs WHERE related_type = 'service_order' AND related_id = $1 AND status = 'zatwierdzony'`],
+    ['rezerwacje materiałów', `SELECT count(*)::int FROM stock_reservations WHERE related_type = 'service_order' AND related_id = $1 AND status = 'aktywna'`],
+    ['czas pracy', `SELECT count(*)::int FROM time_entries WHERE related_type = 'service_order' AND related_id = $1`],
+    ['dokumenty', `SELECT count(*)::int FROM documents WHERE related_type = 'service_order' AND related_id = $1`]],
+  blockers: x => [...(['nowe', 'oczekuje', 'przypisane', 'zaplanowane', 'anulowane'].includes(x.status) ? [] : [`status „${x.status.replace('_', ' ')}”`]), ...(x.protocol_document_id ? ['protokół'] : [])],
+  before: async (c, x) => {
+    await c.query('UPDATE phone_requests SET service_order_id = NULL WHERE service_order_id = $1', [x.id]);
+    if (x.assigned_to && x.status !== 'anulowane') await notify([x.assigned_to], { kind: 'serwis.anulowanie', title: `Usunięto zlecenie ${x.number}`, body: x.client_name || '', link: '/moje-serwisy', related_type: 'service_order', related_id: x.id }, { client: c });
+  },
+  hint: 'Anuluj zlecenie (z powodem) – historia zostanie.' });
 
 module.exports = { office, own };

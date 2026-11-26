@@ -350,6 +350,7 @@
     if (o.status === 'szkic') acts.push('<button type="button" class="btn btn-secondary btn-sm" data-oa="edit">Edytuj (nowa wersja)</button><button type="button" class="btn btn-primary btn-sm" data-oa="send">Wyślij do akceptacji</button>');
     if (o.status === 'do_akceptacji' && o.approval_status === 'oczekuje') acts.push('<button type="button" class="btn btn-ghost btn-sm" data-oa="withdraw">Wycofaj z akceptacji</button>');
     if (o.status === 'do_akceptacji' && o.approval_status === 'zatwierdzona') acts.push('<button type="button" class="btn btn-primary btn-sm" data-oa="release">Wyślij do klienta</button>');
+    if (['szkic', 'do_akceptacji', 'anulowana', 'odrzucona'].includes(o.status) && !o.sent_at) acts.push(U().delBtn('oferty/' + o.id, 'Oferta ' + o.number, 'Zmień status oferty na „Anulowana”.'));
     if (o.status === 'wyslana') acts.push('<button type="button" class="btn btn-primary btn-sm" data-oa="won">Klient przyjął ofertę</button><button type="button" class="btn btn-secondary btn-sm" data-oa="lost">Klient odrzucił</button>');
     const box = modal(`Oferta ${o.number}`, `<p class="muted">${esc(o.customer_name)} · ${esc(DEP[o.department_id])} · wersja ${esc(o.version)} · ${chip(o.status, OFFER_ST[o.status])}${o.created_by_agent ? ' · przygotował agent AI' : ''}</p>
       <h3 class="ap-title">${esc(o.title)}</h3>
@@ -390,7 +391,7 @@
         <td class="small">${esc([x.customer_name, x.building_name, x.serial_no && 'nr ' + x.serial_no, x.sale_number].filter(Boolean).join(' · ') || '–')}</td>
         <td>${esc(x.title)}${x.resolution ? `<div class="muted small">Rozwiązanie: ${esc(x.resolution)}</div>` : ''}</td>
         <td><label class="visually-hidden" for="rs-${x.id}">Status</label><select class="status-select" id="rs-${x.id}" data-rk="${x.id}">${Object.entries(CPL_ST).map(([k, v]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
-        <td class="nowrap">${esc(fd(x.reported_at))}</td><td><button type="button" class="btn btn-ghost btn-sm" data-rkr="${x.id}">Rozwiązanie</button></td></tr>`), 'Brak reklamacji.')}</section>`);
+        <td class="nowrap">${esc(fd(x.reported_at))}</td><td class="nowrap"><button type="button" class="btn btn-ghost btn-sm" data-rkr="${x.id}">Rozwiązanie</button>${U().delBtn('reklamacje/' + x.id, 'Reklamacja ' + x.number, 'Zamknij reklamację statusem „Odrzucona” albo „Rozwiązana”.')}</td></tr>`), 'Brak reklamacji.')}</section>`);
     body.querySelectorAll('[data-rk]').forEach(s => s.addEventListener('change', async () => { try { await api('reklamacje/' + s.dataset.rk, { status: s.value }, 'PATCH'); toast('Status reklamacji zmieniony.'); reload(); } catch (e) { toast(e.message); } }));
     body.querySelectorAll('[data-rkr]').forEach(b => b.addEventListener('click', () => { const x = list.find(y => y.id === b.dataset.rkr);
       modal('Rozwiązanie reklamacji ' + x.number, field('rk-res', 'Opis rozwiązania', `<textarea id="rk-res" name="resolution" rows="4">${esc(x.resolution)}</textarea>`) +

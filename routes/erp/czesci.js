@@ -10,6 +10,7 @@ const docs = require('../../lib/docs');
 const S = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V, listLimit } = require('../_util');
 const { plToday } = require('../../lib/dzis');
+const usun = require('../../lib/usun');
 
 const r = express.Router();
 const use = requirePerm('parts.sell');
@@ -251,5 +252,11 @@ r.get('/czesci/analityka', use, wrap(async (req, res) => {
     months: months.rows, top: top.rows.map(t => ({ ...t, marza: r2(t.przychod - t.koszt), marza_pct: t.przychod > 0 ? r2((t.przychod - t.koszt) / t.przychod * 100) : null })),
     slow: slow.rows, slow_days: stale, customers: customers.rows, naleznosci: rec.rows[0] });
 }));
+
+// Zamówienie części: usunięcie tylko nowego albo anulowanego, nigdy niewydanego i niezafakturowanego.
+usun.register(r, '/czesci/zamowienia', use, { table: 'part_orders', action: 'czesci.zamowienie.usuniecie', what: x => `Zamówienie ${x.number}`,
+  blockers: x => [...(['nowe', 'anulowane'].includes(x.status) ? [] : [`status „${x.status}”`]), ...(x.wz_doc_id ? ['wydanie WZ'] : []), ...(x.finance_id ? ['faktura'] : []), ...(x.sale_id ? ['sprzedaż'] : [])],
+  before: async (c, x) => { await c.query(`UPDATE stock_reservations SET status = 'anulowana' WHERE related_type = 'part_order' AND related_id = $1 AND status = 'aktywna'`, [x.id]); },
+  hint: 'Anuluj zamówienie (z powodem) – historia zostanie.' });
 
 module.exports = r;

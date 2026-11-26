@@ -26,7 +26,7 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     return { s: r.status, h: r.headers, j: ct.includes('json') ? await r.json().catch(() => ({})) : {} };
   };
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
-  const users = [], PASS = 'Audyt-Test-2026x', T = { customers: [], finance: [], buildings: [], policies: [], items: [], docs: [], pos: [], suppliers: [], installations: [] };
+  const users = [], PASS = 'Audyt-Test-2026x', T = { customers: [], finance: [], buildings: [], policies: [], items: [], docs: [], pos: [], suppliers: [], installations: [], crews: [] };
   const { warsawDay } = require('./_setup'), today = warsawDay();
   try {
     for (let i = 0; i < 60; i++) { try { await raw('health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
@@ -211,6 +211,52 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     r = await call('d1/montaze/' + M4.id, null, UZ.c, 'DELETE'); ok(r.s === 409 && /Wykonany/.test(r.j.error), 'wykonany montaż nie jest usuwany (409)');
     ok((await pool.query(`SELECT count(*)::int n FROM audit_logs WHERE action = 'montaz.usuniecie' AND resource_id = ANY($1::text[])`, [[M1.id, M3.id]])).rows[0].n === 2, 'usunięcia montaży w dzienniku zdarzeń');
 
+    // ---------- N4g: usuwanie wpisów bez historii we wszystkich modułach (lib/usun.js); z historią – 409 z podpowiedzią ----------
+    const del = (u, who = AD.c) => call(u, null, who, 'DELETE'), sfx = Date.now().toString().slice(-6);
+    const pair = async (label, u, hist, who = AD.c) => {
+      const p = await call(u + '/powiazania', null, who); ok(p.s === 200 && Array.isArray(p.j), label + ': lista powiązań');
+      if (hist) { r = await del(u, who); ok(r.s === 409 && /historię/.test(r.j.error), label + ': z historią – 409 (' + (r.j.error || r.s).toString().slice(0, 60) + ')'); }
+      else { r = await del(u, who); eq(r.s, 200, label + ': bez historii – usunięty'); }
+    };
+    // ekipy, instalatorzy, urządzenia, lokale, kontrakty
+    let x = (await call('d1/ekipy', { name: '[T-AUD] Ekipa pusta' }, UZ.c)).j; await pair('ekipa', 'd1/ekipy/' + x.id, false, UZ.c);
+    const CR = (await call('d1/ekipy', { name: '[T-AUD] Ekipa z montażem' }, UZ.c)).j; T.crews.push(CR.id);
+    await mkInst({ crew_id: CR.id }); await pair('ekipa z montażem', 'd1/ekipy/' + CR.id, true, UZ.c);
+    x = (await call('d1/instalatorzy', { name: '[T-AUD] Instalator', crew_id: CR.id }, UZ.c)).j; await pair('instalator', 'd1/instalatorzy/' + x.id, false, UZ.c);
+    await call('d1/urzadzenia', { serials: ['TAUD-A' + sfx, 'TAUD-B' + sfx], type: 'wodomierz', building_id: B2.id }, UZ.c);
+    const devA = (await pool.query('SELECT id FROM devices WHERE serial_no = $1', ['TAUD-A' + sfx])).rows[0].id, devB = (await pool.query('SELECT id FROM devices WHERE serial_no = $1', ['TAUD-B' + sfx])).rows[0].id;
+    await pair('urządzenie', 'd1/urzadzenia/' + devA, false, UZ.c);
+    await call('reklamacje', { department_id: 'podzielniki-i-montaze', serial_no: 'TAUD-B' + sfx, title: '[T-AUD] Usterka' }, UZ.c);
+    await pair('urządzenie z reklamacją', 'd1/urzadzenia/' + devB, true, UZ.c);
+    const CPL = (await pool.query('SELECT id FROM complaints WHERE device_id = $1', [devB])).rows[0].id; T.complaints = [CPL];
+    x = (await call('d1/budynki/' + B2.id + '/lokale', { number: 'T' + sfx }, UZ.c)).j; await pair('lokal', 'd1/lokale/' + x.id, false, UZ.c);
+    x = (await call('d1/budynki/' + B2.id + '/lokale', { number: 'U' + sfx }, UZ.c)).j; const UN = x.id;
+    await pool.query('UPDATE devices SET unit_id = $2 WHERE id = $1', [devB, UN]); await pair('lokal z urządzeniem', 'd1/lokale/' + UN, true, UZ.c);
+    x = (await call('d1/kontrakty', { customer_id: PCUST.id, title: '[T-AUD] Kontrakt pusty' }, UZ.c)).j; await pair('kontrakt', 'd1/kontrakty/' + x.id, false, UZ.c);
+    const KT = (await call('d1/kontrakty', { customer_id: PCUST.id, title: '[T-AUD] Kontrakt z montażem' }, UZ.c)).j; T.projects = [KT.id];
+    await mkInst({ project_id: KT.id }); await pair('kontrakt z montażem', 'd1/kontrakty/' + KT.id, true, UZ.c);
+    // reklamacja, zlecenie serwisowe, harmonogram odczytów
+    x = (await call('reklamacje', { department_id: 'podzielniki-i-montaze', title: '[T-AUD] Reklamacja pomyłka', customer_id: PCUST.id }, UZ.c)).j; await pair('reklamacja', 'reklamacje/' + x.id, false, UZ.c);
+    x = (await call('serwisy', { customer_id: PCUST.id, building_id: B2.id, client_name: '[T-AUD] Lokator', address: 'ul. Kontrolna 7', description: '[T-AUD] pomyłka' }, AD.c)).j;
+    await pair('zlecenie serwisowe (nowe)', 'serwisy/' + x.id, false);
+    x = (await call('serwisy', { customer_id: PCUST.id, building_id: B2.id, client_name: '[T-AUD] Lokator', address: 'ul. Kontrolna 7', description: '[T-AUD] w realizacji' }, AD.c)).j; T.orders = [x.id];
+    await pool.query(`UPDATE service_orders SET status = 'w_realizacji', assigned_to = $2 WHERE id = $1`, [x.id, AD.id]); await pair('zlecenie w realizacji', 'serwisy/' + x.id, true);
+    x = (await call('odczyty', { building_id: B2.id, scope: 'wszystkie', method: 'radiowy', cycle_months: 12, next_due: inDays(30) }, AD.c)).j; await pair('harmonogram odczytów', 'odczyty/' + x.id, false);
+    // magazyn: pozycja, dostawca, magazyn; zakupy; części
+    x = (await call('magazyn/pozycje', { sku: 'TAUD-P' + sfx, name: '[T-AUD] Pomyłka', kind: 'material' }, MG.c)).j; await pair('pozycja magazynowa', 'magazyn/pozycje/' + x.id, false, MG.c);
+    await pair('pozycja z ruchami', 'magazyn/pozycje/' + IT.id, true, MG.c);
+    x = (await call('magazyn/dostawcy', { name: '[T-AUD] Dostawca pomyłka' }, MG.c)).j; await pair('dostawca', 'magazyn/dostawcy/' + x.id, false, MG.c);
+    await pair('dostawca z zamówieniem', 'magazyn/dostawcy/' + SUP.id, true, MG.c);
+    x = (await call('magazyn/magazyny', { code: 'TA' + sfx, name: '[T-AUD] Magazyn', kind: 'samochod' }, MG.c)).j; await pair('magazyn', 'magazyn/magazyny/' + x.id, false, MG.c);
+    await pair('magazyn główny MAG', 'magazyn/magazyny/' + W.id, true, MG.c);
+    x = (await call('zakupy', { supplier_id: SUP.id, lines: [{ item_id: IT.id, qty: 1, unit_price: 1 }] }, MG.c)).j; await pair('szkic zamówienia zakupu', 'zakupy/' + x.id, false, MG.c);
+    await pair('wysłane zamówienie zakupu', 'zakupy/' + PO.id, true, MG.c);
+    x = (await call('czesci/zamowienia', { customer_id: PCUST.id, lines: [{ item_id: IT.id, qty: 1 }] }, AD.c)).j; await pair('nowe zamówienie części', 'czesci/zamowienia/' + x.id, false);
+    x = (await call('czesci/zamowienia', { customer_id: PCUST.id, lines: [{ item_id: IT.id, qty: 1 }] }, AD.c)).j; T.porders = [x.id];
+    await call('czesci/zamowienia/' + x.id + '/potwierdz', {}, AD.c); await pair('potwierdzone zamówienie części', 'czesci/zamowienia/' + x.id, true);
+    eq((await del('magazyn/pozycje/' + IT.id, UZ.c)).s, 403, 'biuro nie usuwa pozycji magazynowych');
+    ok((await pool.query(`SELECT count(DISTINCT action)::int n FROM audit_logs WHERE action LIKE '%.usuniecie' AND actor_id = ANY($1::text[])`, [users.map(String)])).rows[0].n >= 12, 'usunięcia w dzienniku zdarzeń');
+
 
     // ---------- N5: błędy klienta 400/413 zamiast 500, HSTS, dokumenty polis, konflikty równoczesnej edycji ----------
     const post = (p, body, cookie) => raw(p, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body });
@@ -250,6 +296,9 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
   finally {
     // sprzątanie danych roboczych (kolejność: zależne rekordy najpierw)
     const q = (sql, p) => pool.query(sql, p).catch(e => console.error('sprzątanie:', e.message));
+    await q(`UPDATE part_order_lines SET reservation_id = NULL WHERE order_id IN (SELECT id FROM part_orders WHERE created_by = ANY($1::uuid[]))`, [users]);
+    await q('DELETE FROM stock_reservations WHERE created_by = ANY($1::uuid[])', [users]);
+    await q('DELETE FROM part_orders WHERE created_by = ANY($1::uuid[])', [users]);
     await q('DELETE FROM finance WHERE id = ANY($1::uuid[])', [T.finance]);
     await q('DELETE FROM purchase_orders WHERE id = ANY($1::uuid[]) OR supplier_id = ANY($2::uuid[])', [T.pos, T.suppliers]);
     await q('DELETE FROM stock_reservations WHERE item_id = ANY($1::uuid[])', [T.items]);
@@ -262,8 +311,14 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     await q('UPDATE policies SET renewed_by = NULL, previous_id = NULL WHERE id = ANY($1::uuid[])', [T.policies]);
     await q('DELETE FROM policies WHERE id = ANY($1::uuid[])', [T.policies]);
     await q(`DELETE FROM documents WHERE related_type = 'policy' AND related_id = ANY($1::uuid[])`, [T.policies]);
+    await q('DELETE FROM service_orders WHERE id = ANY($1::uuid[]) OR building_id = ANY($2::uuid[])', [T.orders || [], T.buildings]);
+    await q('DELETE FROM complaints WHERE id = ANY($1::uuid[]) OR building_id = ANY($2::uuid[])', [T.complaints || [], T.buildings]);
+    await q('DELETE FROM reading_schedules WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM devices WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM installations WHERE id = ANY($1::uuid[]) OR building_id = ANY($2::uuid[])', [T.installations, T.buildings]);
+    await q('DELETE FROM projects WHERE id = ANY($1::uuid[])', [T.projects || []]);
+    await q('DELETE FROM installers WHERE crew_id = ANY($1::uuid[])', [T.crews]);
+    await q('DELETE FROM crews WHERE id = ANY($1::uuid[])', [T.crews]);
     await q('DELETE FROM units WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM buildings WHERE id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM customers WHERE id = ANY($1::uuid[]) OR created_by = ANY($2::uuid[])', [T.customers, users]);

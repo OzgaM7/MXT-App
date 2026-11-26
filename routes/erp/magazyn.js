@@ -6,6 +6,7 @@ const { audit } = require('../../lib/audit');
 const { can, requirePerm } = require('../../lib/rbac');
 const S = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V, listLimit, withTotal } = require('../_util');
+const usun = require('../../lib/usun');
 
 const r = express.Router();
 const anyOf = perms => async (req, res, next) => perms.some(p => can(req.user, p)) ? next() : requirePerm(perms[0])(req, res, next);
@@ -213,5 +214,17 @@ r.patch('/dostawcy/:id', idParam, requirePerm('purchases.manage'), wrap(async (r
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono dostawcy.');
   res.json(q.rows[0]);
 }));
+
+// ---------- usuwanie wpisów bez historii (lib/usun.js); z historią – wyłączenie ----------
+const zeroLevels = (col) => ({ skip: ['stock_levels'], extra: [['stan magazynowy', `SELECT count(*)::int FROM stock_levels WHERE ${col} = $1 AND (qty <> 0 OR reserved <> 0)`]],
+  before: async (c, x) => { await c.query(`DELETE FROM stock_levels WHERE ${col} = $1`, [x.id]); } });   // puste wiersze stanu zakładane automatycznie
+usun.register(r, '/pozycje', items, { table: 'stock_items', action: 'magazyn.pozycja.usuniecie', what: x => `Pozycja ${x.sku}`, ...zeroLevels('item_id'),
+  hint: 'Wyłącz pozycję (nieaktywna) – historia ruchów zostanie.' });
+usun.register(r, '/dostawcy', requirePerm('purchases.manage'), { table: 'suppliers', action: 'magazyn.dostawca.usuniecie', what: x => `Dostawca ${x.name}`, skip: ['stock_items'],
+  before: async (c, x) => { await c.query('UPDATE stock_items SET supplier_id = NULL WHERE supplier_id = $1', [x.id]); },   // domyślny dostawca pozycji – nie historia
+  hint: 'Wyłącz dostawcę – dokumenty i zamówienia zostaną.' });
+usun.register(r, '/magazyny', manage, { table: 'warehouses', action: 'magazyn.magazyn.usuniecie', what: x => `Magazyn ${x.code}`, ...zeroLevels('warehouse_id'),
+  blockers: x => x.code === 'MAG' ? ['magazyn główny (używany domyślnie)'] : [],
+  hint: 'Wyłącz magazyn – historia dokumentów zostanie.' });
 
 module.exports = r;

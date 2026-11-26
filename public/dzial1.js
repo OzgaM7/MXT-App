@@ -494,8 +494,9 @@
       <div class="wf-grid">${crews.filter(c => !c.virtual || c.installers.length).map(c => `<section class="panel crew${c.is_active === false ? ' crew-off' : ''}">
         <div class="panel-head"><h2 class="panel-title">${esc(c.name)}</h2>${c.virtual ? '' : chip(c.is_active ? 'aktywny' : 'wylaczony', c.is_active ? 'Aktywna' : 'Nieaktywna')}</div>
         ${c.virtual ? '' : `<p class="small">${c.leader ? 'Brygadzista: <b>' + esc(c.leader) + '</b>' : 'Brak brygadzisty'}${c.phone ? ' · <span class="sel">' + esc(c.phone) + '</span>' : ''}</p><p class="muted small">Zaplanowane montaże: ${esc(c.upcoming)}</p>`}
-        <ul class="mem-list">${c.installers.map(i => `<li><b>${esc(i.name)}</b>${i.phone ? ' · ' + esc(i.phone) : ''}${i.user_login ? ' ' + chip('ok', 'konto: ' + i.user_login) : ''}${i.qualifications ? `<div class="muted small">${esc(i.qualifications)}</div>` : ''}${i.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</li>`).join('') || '<li class="muted small">Brak instalatorów.</li>'}</ul>
-        ${c.virtual ? '' : `<div class="ap-actions"><button type="button" class="btn btn-ghost btn-sm" data-ct="${c.id}">${c.is_active ? 'Dezaktywuj' : 'Aktywuj'}</button></div>`}</section>`).join('')}</div>
+        <ul class="mem-list">${c.installers.map(i => `<li><button type="button" class="linkish" data-inst="${i.id}"><b>${esc(i.name)}</b></button>${i.phone ? ' · ' + esc(i.phone) : ''}${i.user_login ? ' ' + chip('ok', 'konto: ' + i.user_login) : ''}${i.qualifications ? `<div class="muted small">${esc(i.qualifications)}</div>` : ''}${i.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</li>`).join('') || '<li class="muted small">Brak instalatorów.</li>'}</ul>
+        ${c.virtual ? '' : `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" data-cedit="${c.id}">Edytuj</button><button type="button" class="btn btn-ghost btn-sm" data-ct="${c.id}">${c.is_active ? 'Dezaktywuj' : 'Aktywuj'}</button>${U().delBtn('d1/ekipy/' + c.id, 'Ekipa ' + c.name, 'Dezaktywuj ekipę – jej montaże zostaną w historii.')}</div>`}</section>`).join('')}</div>
+      <p class="muted small">Kliknij nazwisko instalatora, aby edytować jego dane, ekipę lub go usunąć.</p>
       ${crews.length <= 1 ? '<p class="empty-inline">Brak ekip. Dodaj pierwszą ekipę montażową.</p>' : ''}`;
     body.querySelector('#c-new').addEventListener('click', () => modal('Nowa ekipa', field('c-n', 'Nazwa', '<input id="c-n" name="name" required maxlength="100">') + `<div class="field-row">${field('c-l', 'Brygadzista', '<input id="c-l" name="leader" maxlength="100">')}${field('c-p', 'Telefon', '<input id="c-p" name="phone" maxlength="50">')}</div>`,
       { submit: 'Dodaj ekipę', onSubmit: async f => { await api('d1/ekipy', { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone') }); toast('Ekipa dodana.'); reload(); } }));
@@ -504,6 +505,23 @@
       ${field('n-q', 'Uprawnienia / kwalifikacje', '<input id="n-q" name="qualifications" maxlength="500" placeholder="np. SEP do 1 kV, praca na wysokości">')}`,
       { submit: 'Dodaj', onSubmit: async f => { await api('d1/instalatorzy', { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications') }); toast('Instalator dodany.'); reload(); } }));
     body.querySelectorAll('[data-ct]').forEach(b => b.addEventListener('click', async () => { const c = crews.find(x => x.id === b.dataset.ct); await api('d1/ekipy/' + c.id, { is_active: !c.is_active }, 'PATCH'); reload(); }));
+    body.querySelectorAll('[data-cedit]').forEach(b => b.addEventListener('click', () => {
+      const c = crews.find(x => x.id === b.dataset.cedit);
+      modal('Ekipa ' + c.name, field('ce-n', 'Nazwa', `<input id="ce-n" name="name" required maxlength="100" value="${esc(c.name)}">`) + `<div class="field-row">${field('ce-l', 'Brygadzista', `<input id="ce-l" name="leader" maxlength="100" value="${esc(c.leader || '')}">`)}${field('ce-p', 'Telefon', `<input id="ce-p" name="phone" maxlength="50" value="${esc(c.phone || '')}">`)}</div>
+        <div class="ap-actions">${U().delBtn('d1/ekipy/' + c.id, 'Ekipa ' + c.name, 'Dezaktywuj ekipę – jej montaże zostaną w historii.', 'Usuń ekipę')}</div>`,
+      { submit: 'Zapisz', onSubmit: async f => { await api('d1/ekipy/' + c.id, { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone') }, 'PATCH'); toast('Ekipa zapisana.'); reload(); } });
+    }));
+    const allInst = crews.flatMap(c => c.installers);
+    body.querySelectorAll('[data-inst]').forEach(b => b.addEventListener('click', () => {
+      const i = allInst.find(x => x.id === b.dataset.inst);
+      modal('Instalator ' + i.name, `${field('ie-n', 'Imię i nazwisko', `<input id="ie-n" name="name" required maxlength="120" value="${esc(i.name)}">`)}
+        <div class="field-row">${field('ie-c', 'Ekipa', `<select id="ie-c" name="crew_id">${opts(crews.filter(c => !c.virtual), i.crew_id, c => c.name, c => c.id, '– bez ekipy –')}</select>`)}${field('ie-p', 'Telefon', `<input id="ie-p" name="phone" maxlength="50" value="${esc(i.phone || '')}">`)}</div>
+        ${field('ie-q', 'Uprawnienia / kwalifikacje', `<input id="ie-q" name="qualifications" maxlength="500" value="${esc(i.qualifications || '')}">`)}
+        <label class="toggle"><input type="checkbox" name="active"${i.is_active ? ' checked' : ''}> Instalator aktywny</label>
+        ${i.user_login ? `<p class="muted small">Powiązane konto: ${esc(i.user_login)} (zmiana w Konta i role).</p>` : ''}
+        <div class="ap-actions">${U().delBtn('d1/instalatorzy/' + i.id, 'Instalator ' + i.name, 'Odznacz „Instalator aktywny”.', 'Usuń instalatora')}</div>`,
+      { submit: 'Zapisz', onSubmit: async f => { await api('d1/instalatorzy/' + i.id, { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications'), is_active: f.elements.active.checked }, 'PATCH'); toast('Instalator zapisany.'); reload(); } });
+    }));
   }
 
   // ---------- reklamacje ----------

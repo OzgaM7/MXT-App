@@ -1052,7 +1052,21 @@
     tbody.append(...rows);
   });
 
-  window.MXT_UI = { dayPlus, moreBar, urlParams, esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today, searchOpen, savedViews };
+  // Wspólny przycisk „Usuń” (lib/usun.js na serwerze): wpis bez historii – potwierdzenie i usunięcie; z historią – komunikat
+  // z listą powiązań i podpowiedzią (wyłącz / anuluj). Po usunięciu ekran odświeża się w tym samym miejscu (moduł pamięta zakładkę).
+  const delBtn = (url, name, hint, label = 'Usuń') => `<button type="button" class="btn btn-ghost btn-sm btn-del" data-usun="${esc(url)}" data-usun-n="${esc(name)}" data-usun-h="${esc(hint || '')}">${esc(label)}</button>`;
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-usun]'); if (!b) return;
+    e.preventDefault();
+    const url = b.dataset.usun, name = b.dataset.usunN, hint = b.dataset.usunH;
+    let h;
+    try { h = await api(url + '/powiazania'); } catch (x) { toast(x.message); return; }
+    if (h.length) { toast(`${name} ma historię (${h.map(([l, n]) => n > 1 ? l + ': ' + n : l).join(', ')}) – nie można usunąć. ${hint}`); return; }
+    modal('Usunąć: ' + name + '?', `<p><b>${esc(name)}</b> nie ma historii w systemie (zleceń, dokumentów, rozliczeń, ruchów). Usunięcia nie można cofnąć.</p>`,
+      { submit: 'Usuń', danger: true, cancel: 'Wróć', onSubmit: async () => { await api(url, null, 'DELETE'); toast(name + ' – usunięto.'); setTimeout(() => go(location.pathname), 0); } });
+  });
+
+  window.MXT_UI = { delBtn, dayPlus, moreBar, urlParams, esc, api, go, toast, me, has, meta, modal, field, val, chip, fdt, fd, money, frame, deptFrame, wsBadge, wsHoist, icon, render, pre, avatar, usd, taskForm, today, searchOpen, savedViews };
 
   window.MXT_MODULES = { routes: ROUTES, render, menu, register };
 })();

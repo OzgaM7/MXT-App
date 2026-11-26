@@ -94,7 +94,7 @@
       <div class="ap-actions">${o.status === 'nowe' ? act('btn-primary', 'confirm', 'Potwierdź i zarezerwuj') + act('btn-secondary', 'edit', 'Edytuj') : ''}
         ${o.status === 'potwierdzone' ? act('btn-primary', 'issue', 'Wydaj towar (WZ)') : ''}${o.status === 'wydane' ? act('btn-primary', 'invoice', 'Wystaw fakturę') : ''}
         ${o.status === 'zafakturowane' && !o.paid_at ? act('btn-primary', 'paid', 'Zapłacono') : ''}${['wydane', 'zafakturowane'].includes(o.status) ? act('btn-secondary', 'return', 'Zwrot') + act('btn-secondary', 'complaint', 'Reklamacja') : ''}
-        ${['nowe', 'potwierdzone'].includes(o.status) ? act('btn-ghost', 'cancel', 'Anuluj zamówienie') : ''}</div>
+        ${['nowe', 'potwierdzone'].includes(o.status) ? act('btn-ghost', 'cancel', 'Anuluj zamówienie') : ''}${['nowe', 'anulowane'].includes(o.status) ? U().delBtn('czesci/zamowienia/' + o.id, 'Zamówienie ' + o.number, 'Anuluj zamówienie (z powodem).') : ''}</div>
       ${o.returns.length ? `<h3 class="panel-sub">Zwroty</h3><ul class="tool-list">${o.returns.map(x => `<li><b>${esc(x.number)}</b> · ${esc(fd(x.return_date))} · ${x.restock ? 'na stan' : 'wadliwe (bez zwrotu na stan)'} · korekta ${esc(pln(x.refund_net))} · ${esc(x.reason)}</li>`).join('')}</ul>` : ''}
       ${o.complaints.length ? `<h3 class="panel-sub">Reklamacje</h3><ul class="tool-list">${o.complaints.map(x => `<li><b>${esc(x.number)}</b> · ${esc(x.title)} · ${esc(x.status)}</li>`).join('')}</ul>` : ''}`, { wide: true });
     const run = async (fn, msg) => { try { await fn(); toast(msg); refresh(); } catch (e) { toast(e.message); } };
@@ -197,7 +197,7 @@
       ${o.note ? `<p class="muted">${esc(o.note)}</p>` : ''}
       <div class="ap-actions">${o.status === 'szkic' && has('purchases.manage') ? '<button type="button" class="btn btn-primary btn-sm" data-a="order">Wyślij do dostawcy</button><button type="button" class="btn btn-secondary btn-sm" data-a="edit">Edytuj szkic</button>' : ''}
         ${['zamowione', 'czesciowo'].includes(o.status) && has('stock.manage') ? '<button type="button" class="btn btn-primary btn-sm" data-a="receive">Przyjmij dostawę</button>' : ''}
-        ${['szkic', 'zamowione'].includes(o.status) && has('purchases.manage') ? '<button type="button" class="btn btn-ghost btn-sm" data-a="cancel">Anuluj</button>' : ''}</div>`, { wide: true });
+        ${['szkic', 'zamowione'].includes(o.status) && has('purchases.manage') ? '<button type="button" class="btn btn-ghost btn-sm" data-a="cancel">Anuluj</button>' : ''}${['szkic', 'anulowane'].includes(o.status) && has('purchases.manage') ? U().delBtn('zakupy/' + o.id, 'Zamówienie zakupu ' + o.number, 'Anuluj zamówienie.') : ''}</div>`, { wide: true });
     const on = (k, fn) => { const b = box.querySelector(`[data-a="${k}"]`); if (b) b.addEventListener('click', fn); };
     on('order', async () => { try { await api('zakupy/' + id + '/zamow', {}); toast('Zamówienie wysłane do dostawcy (status „zamówione”).'); refresh(); } catch (e) { toast(e.message); } });
     on('cancel', async () => { try { await api('zakupy/' + id + '/anuluj', {}); toast('Zamówienie anulowane.'); refresh(); } catch (e) { toast(e.message); } });

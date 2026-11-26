@@ -18,6 +18,7 @@ const use = requirePerm('tasks.use'), admin = requirePerm('approvals.decide');
 const fin = requirePerm('finance.view');
 const { r2 } = require('../lib/erp/stock');
 const { plToday } = require('../lib/dzis');
+const usun = require('../lib/usun');
 const DEPTS = ['podzielniki-i-montaze', 'sprzedaz-czesci-i-eksport', 'ubezpieczenia'];
 const CUSTOMER_KINDS = ['osoba_prywatna', 'firma', 'wspolnota', 'spoldzielnia', 'zarzadca', 'klient_zagraniczny', 'inny'];
 
@@ -484,5 +485,15 @@ r.get('/dokumenty/:id/plik', idParam, use, wrap(async (req, res) => {
   }
   sendPdf(res, v.file_data, v.file_name || 'dokument.pdf', req.query.pobierz !== '1');
 }));
+
+// ---------- usuwanie wpisów bez historii (lib/usun.js) ----------
+// Oferta: tylko niewysłana (szkic, do akceptacji, anulowana, odrzucona) i bez sprzedaży, faktur, zamówień.
+usun.register(r, '/oferty', use, { table: 'offers', action: 'oferta.usuniecie', what: x => `Oferta ${x.number}`,
+  blockers: x => [...(['szkic', 'do_akceptacji', 'anulowana', 'odrzucona'].includes(x.status) ? [] : [`status „${x.status}”`]), ...(x.sent_at ? ['wysłana do klienta'] : [])],
+  after: async (c, x) => { if (x.document_id) await c.query(`DELETE FROM documents d WHERE d.id = $1 AND d.kind = 'oferta' AND NOT EXISTS (SELECT 1 FROM offers WHERE document_id = d.id)
+      AND NOT EXISTS (SELECT 1 FROM export_documents WHERE document_id = d.id)`, [x.document_id]); },
+  hint: 'Zmień status oferty na „Anulowana”.' });
+usun.register(r, '/reklamacje', use, { table: 'complaints', action: 'reklamacja.usuniecie', what: x => `Reklamacja ${x.number}`,
+  hint: 'Zamknij reklamację statusem „Odrzucona” albo „Rozwiązana” – historia zostanie.' });
 
 module.exports = { router: r, financeSummary };

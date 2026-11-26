@@ -21,6 +21,7 @@ const INST_ST = ['zaplanowany', 'w_toku', 'wykonany', 'odebrany', 'anulowany'];
 // rentowność: przychody − koszty (PLN) z Finance Intelligence
 const { PROFIT } = require('../lib/erp/profit');   // przychody z finansów, koszty z księgi kosztów (materiały, robocizna)
 const { plToday } = require('../lib/dzis');
+const usun = require('../lib/usun');
 
 // ---------- budynki ----------
 const noMoney = ({ przychod, koszt, ...rest }) => rest;   // bez finance.view: bez przychodów i kosztów
@@ -449,5 +450,19 @@ r.get('/podsumowanie', use, wrap(async (req, res) => {
     (SELECT count(*)::int FROM crews WHERE is_active) AS ekipy`, [DEP]);
   res.json(q.rows[0]);
 }));
+
+// ---------- usuwanie wpisów bez historii (lib/usun.js); z historią – wyłączenie / zmiana statusu ----------
+usun.register(r, '/urzadzenia', use, { table: 'devices', action: 'urzadzenie.usuniecie', what: x => `Urządzenie ${x.serial_no}`,
+  extra: [['zdarzenia urządzenia (wymiany, serwisy, odczyty)', `SELECT count(*)::int FROM device_events WHERE device_id = $1 AND kind <> 'montaz'`],
+    ['zlecenia serwisowe', 'SELECT count(*)::int FROM service_orders WHERE device_id = $1']],
+  hint: 'Zmień status urządzenia (np. „Zdemontowane” albo „Wadliwe”) – historia urządzenia zostanie.' });
+usun.register(r, '/ekipy', use, { table: 'crews', action: 'ekipa.usuniecie', what: x => `Ekipa ${x.name}`,
+  hint: 'Wyłącz ekipę – jej montaże zostaną w historii, a ekipa zniknie z list wyboru.' });
+usun.register(r, '/instalatorzy', use, { table: 'installers', action: 'instalator.usuniecie', what: x => `Instalator ${x.name}`,
+  blockers: x => x.user_id ? ['powiązane konto pracownika – najpierw odłącz je w Konta i role'] : [],
+  hint: 'Wyłącz instalatora.' });
+usun.register(r, '/kontrakty', use, { table: 'projects', action: 'kontrakt.usuniecie', what: x => `Kontrakt ${x.number}`,
+  extra: [['dokumenty (protokoły)', `SELECT count(*)::int FROM documents WHERE related_type = 'project' AND related_id = $1`]],
+  hint: 'Zmień status kontraktu na „Anulowany” – historia zostanie.' });
 
 module.exports = r;

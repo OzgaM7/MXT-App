@@ -170,6 +170,7 @@
         <button type="button" class="btn btn-secondary btn-sm" id="pc-mat">Wydaj materiał</button>
         <button type="button" class="btn btn-secondary btn-sm" id="pc-time">Dodaj czas pracy</button>
         <button type="button" class="btn btn-secondary btn-sm" id="pc-prot">Protokół miesięczny</button>
+        ${U().delBtn('d1/kontrakty/' + p.id, 'Kontrakt ' + p.number, 'Zmień status kontraktu na „Anulowany” – historia zostanie.')}
         <button type="button" class="btn btn-ghost btn-sm" id="pc-note">Notatka</button></div>
       ${sec('Budżet i wykonanie', `<div class="table-wrap"><table class="table table-sm"><thead><tr><th>Przychody</th><th class="num">Plan</th><th class="num">Wykonanie</th><th class="num">Różnica</th></tr></thead><tbody>${budRows('przychod').join('') || '<tr><td colspan="4" class="muted">Brak przychodów i planu.</td></tr>'}</tbody></table></div>
         <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Koszty</th><th class="num">Plan</th><th class="num">Wykonanie</th><th class="num">Pozostało</th></tr></thead><tbody>${budRows('koszt').join('') || '<tr><td colspan="4" class="muted">Brak kosztów i planu.</td></tr>'}</tbody></table></div>`)}
@@ -268,7 +269,7 @@
           ${field('dv-g', 'Legalizacja do', `<input id="dv-g" name="legalization_until" type="date" value="${esc(d.legalization_until ? String(d.legalization_until).slice(0, 10) : '')}">`)}</div>
         <div class="field-row">${field('dv-s', 'Status', `<select id="dv-s" name="status">${Object.entries(DEV_ST).map(([k, v]) => `<option value="${k}"${d.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select>`)}
           ${field('dv-p', 'Powód zmiany statusu (opcjonalnie)', '<input id="dv-p" name="powod" maxlength="300">')}</div>
-        <div class="ap-actions"><button type="button" class="btn btn-primary btn-sm" id="dv-save">Zapisz dane urządzenia</button><button type="button" class="btn btn-secondary btn-sm" id="dv-ev">Dodaj zdarzenie</button></div></div>
+        <div class="ap-actions"><button type="button" class="btn btn-primary btn-sm" id="dv-save">Zapisz dane urządzenia</button><button type="button" class="btn btn-secondary btn-sm" id="dv-ev">Dodaj zdarzenie</button>${U().delBtn('d1/urzadzenia/' + d.id, 'Urządzenie ' + d.serial_no, 'Zmień status na „Zdemontowane” albo „Wadliwe” – historia urządzenia zostanie.')}</div></div>
       <h3 class="panel-sub">Historia (${d.timeline.length})</h3>
       ${d.timeline.length ? `<ol class="timeline dev-tl">${d.timeline.map(t => `<li><span class="tl-dot tl-${t.kind === 'serwis' ? 'zmiana' : t.kind === 'odczyt' ? 'wykonanie' : t.kind === 'zmiana_statusu' || t.kind === 'demontaz' ? 'odrzucenie' : 'utworzenie'}"></span>
         <div><b>${esc(fd(t.date))} · ${esc(EV[t.kind] || t.kind)}</b>${t.by ? ' · ' + esc(t.by) : ''}<div class="small">${esc(t.text)}</div></div></li>`).join('')}</ol>` : '<p class="empty-inline">Brak zdarzeń.</p>'}
@@ -299,7 +300,7 @@
       ${field('uf-a', 'Powierzchnia m²', `<input id="uf-a" name="area" type="number" min="0" step="0.01" value="${esc(u && u.area_m2 != null ? u.area_m2 : '')}">`)}</div>
       <div class="field-row">${field('uf-o', 'Lokator / właściciel', `<input id="uf-o" name="occupant" maxlength="200" value="${esc(u ? u.occupant : '')}">`)}${field('uf-p', 'Telefon', `<input id="uf-p" name="phone" type="tel" maxlength="50" value="${esc(u ? u.phone : '')}">`)}</div>
       ${field('uf-x', 'Uwagi (dostęp, klucze)', `<input id="uf-x" name="notes" maxlength="1000" value="${esc(u ? u.notes : '')}">`)}
-      ${u ? `<label class="toggle"><input type="checkbox" name="active"${u.is_active ? ' checked' : ''}> Lokal aktywny</label>` : ''}`,
+      ${u ? `<label class="toggle"><input type="checkbox" name="active"${u.is_active ? ' checked' : ''}> Lokal aktywny</label><div class="ap-actions">${U().delBtn('d1/lokale/' + u.id, 'Lokal ' + u.number, 'Odznacz „Lokal aktywny” – historia urządzeń i zleceń zostanie.', 'Usuń lokal')}</div>` : ''}`,
     { submit: 'Zapisz', onSubmit: async f => {
       const b = { number: val(f, 'number'), floor: val(f, 'floor'), area_m2: val(f, 'area'), occupant: val(f, 'occupant'), phone: val(f, 'phone'), notes: val(f, 'notes') };
       if (u) await api('d1/lokale/' + u.id, { ...b, is_active: f.elements.active.checked }, 'PATCH'); else await api('d1/budynki/' + buildingId + '/lokale', b);

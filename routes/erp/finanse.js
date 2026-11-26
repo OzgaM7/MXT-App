@@ -11,6 +11,7 @@ const xlsx = require('../../lib/xlsx');
 const S = require('../../lib/erp/stock');
 const { wrap, bad, idParam, V, listLimit } = require('../_util');
 const { plToday } = require('../../lib/dzis');
+const usun = require('../../lib/usun');
 
 const r = express.Router();
 const buy = requirePerm('purchases.manage'), fin = requirePerm('finance.view');
@@ -233,5 +234,11 @@ r.get('/finanse-erp/integracje', fin, wrap(async (req, res) => {
     { key: 'urzadzenia', name: 'Urządzenia pomiarowe (odczyty radiowe)', status: 'import', detail: 'Import odczytów z pliku czytnika (numer seryjny lub ID radiowe;wartość) działa. Bezpośrednie API producenta – oczekuje na dane dostępowe.' }
   ]);
 }));
+
+// Zamówienie zakupu: usunięcie tylko szkicu albo anulowanego zamówienia bez przyjęć (PZ).
+usun.register(r, '/zakupy', buy, { table: 'purchase_orders', action: 'zakupy.zamowienie.usuniecie', what: x => `Zamówienie zakupu ${x.number}`,
+  extra: [['przyjęcia dostaw (PZ)', `SELECT count(*)::int FROM stock_docs WHERE related_type = 'purchase_order' AND related_id = $1`]],
+  blockers: x => ['szkic', 'anulowane'].includes(x.status) ? [] : [`status „${x.status}”`],
+  hint: 'Anuluj zamówienie – historia zostanie.' });
 
 module.exports = { router: r, results };
