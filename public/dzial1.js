@@ -225,7 +225,7 @@
       <div class="field-row">${field('i-n', 'Liczba urządzeń do montażu', `<input id="i-n" name="devices_planned" type="number" min="0" value="${esc(x ? x.devices_planned : '')}">`)}</div>
       ${field('i-m', 'Lista materiałowa (jedna pozycja na linię: nazwa; ilość; jm)', `<textarea id="i-m" name="materials" rows="3" placeholder="Podzielnik elektroniczny; 48; szt.&#10;Plomba; 48; szt.">${esc(x ? matText(x.materials) : '')}</textarea>`)}
       ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(x ? x.notes : '')}</textarea>`)}
-      ${x ? `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="i-mat">Wydaj materiał z magazynu</button><button type="button" class="btn btn-secondary btn-sm" id="i-time">Czas pracy</button></div>` : ''}`,
+      ${x ? `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="i-mat">Wydaj materiał z magazynu</button><button type="button" class="btn btn-secondary btn-sm" id="i-time">Czas pracy</button>${['wykonany', 'odebrany'].includes(x.status) ? '' : '<button type="button" class="btn btn-ghost btn-sm" id="i-del">Usuń montaż</button>'}</div>` : ''}`,
     { submit: x ? 'Zapisz zmiany' : 'Dodaj montaż', wide: true, onSubmit: async f => {
       try { await submit(f, false); }
       catch (e) { if (/nakładanie/.test(e.message) && !x) { modal('Kolizja terminu ekipy', `<p>${esc(e.message)}</p>`, { submit: 'Dodaj mimo to', onSubmit: () => submit(f, true) }); return; } throw e; }
@@ -233,8 +233,17 @@
     const im = document.querySelector('#modal-box #i-mat'), it = document.querySelector('#modal-box #i-time');
     if (im) im.addEventListener('click', () => window.MXT_ERP.issueForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
     if (it) it.addEventListener('click', () => window.MXT_ERP.timeForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
+    const idel = document.querySelector('#modal-box #i-del');
+    if (idel) idel.addEventListener('click', () => deleteInstallation(x, reload).catch(e => toast(e.message)));
     const sel = document.querySelector('#modal-box #i-b');
     if (sel && !x) sel.addEventListener('change', () => { document.querySelector('#modal-box #i-nb').hidden = sel.value !== '__new'; });
+  }
+  // Usunięcie montażu: tylko bez historii; z historią – komunikat z listą powiązań i podpowiedź „Anulowany”.
+  async function deleteInstallation(x, reload) {
+    const h = await api('d1/montaze/' + x.id + '/powiazania');
+    if (h.length) { toast(`Montaż ${x.number} ma historię (${h.map(([l, n]) => n > 1 ? l + ': ' + n : l).join(', ')}) – nie można go usunąć. Zmień status na „Anulowany”.`); return; }
+    modal('Usunąć montaż ' + x.number + '?', `<p>Montaż <b>${esc(x.building_name || '')}</b>${x.planned_date ? ' (' + esc(fd(x.planned_date)) + ')' : ''} zniknie z harmonogramu i rejestru zleceń. Nie ma zamontowanych urządzeń, materiałów, czasu pracy, faktur ani protokołu.${x.crew_id && x.status !== 'anulowany' ? ' Ekipa dostanie powiadomienie.' : ''} Usunięcia nie można cofnąć.</p>`,
+      { submit: 'Usuń montaż', danger: true, cancel: 'Wróć', onSubmit: async () => { await api('d1/montaze/' + x.id, null, 'DELETE'); toast('Montaż ' + x.number + ' usunięty.'); reload(); } });
   }
   async function protocolForm(x, reload) {
     const d = await api('d1/montaze/' + x.id);
@@ -321,7 +330,7 @@
       <div class="hm-crew">${crew}</div>
       <div class="hm-dev" title="Urządzenia zamontowane / planowane"><b>${esc(x.devices_installed)}/${esc(x.devices_planned || 0)}</b> urz.</div>
       <div class="hm-st">${st}</div>
-      <div class="hm-act"><button type="button" class="hm-edit" data-ie="${x.id}" aria-label="Edytuj montaż ${esc(x.number)}" title="Edytuj">${ic('edit')}</button></div>
+      <div class="hm-act"><button type="button" class="hm-edit" data-ie="${x.id}" aria-label="Edytuj montaż ${esc(x.number)}" title="Edytuj">${ic('edit')}</button>${['wykonany', 'odebrany'].includes(x.status) ? '' : `<button type="button" class="hm-edit hm-del" data-idel="${x.id}" aria-label="Usuń montaż ${esc(x.number)}" title="Usuń">${ic('kosz')}</button>`}</div>
     </article>`;
   }
   const dayGroup = (d, xs) => `<section class="hm-day${d === todayL() ? ' hm-today' : ''}"><h3 class="hm-dh"><span>${esc(dayLabel(d))}</span><span class="hm-dn">${nMont(xs.length)}</span></h3>${xs.map(row).join('')}</section>`;
@@ -453,8 +462,9 @@
     body.querySelector('#i-xls').addEventListener('click', () => window.MXT_IMPORT.excel(reload));
     body.querySelector('#i-doc').addEventListener('click', () => window.MXT_IMPORT.document(reload));
     body.addEventListener('click', async e => {
-      const el = e.target.closest('[data-ie],[data-ip],[data-nav],[data-day],[data-filter],[data-gotab]'); if (!el) return;
+      const el = e.target.closest('[data-ie],[data-idel],[data-ip],[data-nav],[data-day],[data-filter],[data-gotab]'); if (!el) return;
       const ds = el.dataset;
+      if (ds.idel) return deleteInstallation(list.find(x => x.id === ds.idel) || await api('d1/montaze/' + ds.idel), reload).catch(err => toast(err.message));
       if (ds.ie) return installationForm(await api('d1/montaze/' + ds.ie), reload);
       if (ds.ip) return protocolForm(list.find(x => x.id === ds.ip), reload);
       if (ds.gotab) { tab = ds.gotab; return reload(); }

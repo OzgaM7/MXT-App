@@ -303,8 +303,49 @@ r.patch('/montaze/:id', idParam, use, wrap(async (req, res) => {
     res.json(x);
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
+// Usuwanie montażu wpisanego przez pomyłkę (zły budynek, termin, duplikat importu): tylko bez historii – bez zamontowanych
+// urządzeń, wydanych materiałów, rezerwacji, czasu pracy, wpisów finansowych, reklamacji, protokołu i rozliczenia.
+// Montaż z historią się anuluje (status „Anulowany”): zostaje w historii, a ekipa dostaje powiadomienie.
+async function installationHistory(c, x) {
+  const r = (await c.query(`SELECT
+      (SELECT count(*)::int FROM devices WHERE installation_id = $1) AS "urządzenia",
+      (SELECT count(*)::int FROM device_events WHERE related_type = 'installation' AND related_id = $1) AS "zdarzenia urządzeń",
+      (SELECT count(*)::int FROM stock_docs WHERE related_type = 'installation' AND related_id = $1 AND status = 'zatwierdzony') AS "wydania materiałów",
+      (SELECT count(*)::int FROM stock_reservations WHERE related_type = 'installation' AND related_id = $1 AND status = 'aktywna') AS "rezerwacje materiałów",
+      (SELECT count(*)::int FROM time_entries WHERE related_type = 'installation' AND related_id = $1) AS "czas pracy",
+      (SELECT count(*)::int FROM finance WHERE installation_id = $1) AS "wpisy finansowe",
+      (SELECT count(*)::int FROM complaints WHERE installation_id = $1) AS "reklamacje",
+      (SELECT count(*)::int FROM documents WHERE related_type = 'installation' AND related_id = $1) AS "dokumenty"`, [x.id])).rows[0];
+  const out = Object.entries(r).filter(([, n]) => n > 0);
+  if (x.protocol_document_id) out.push(['protokół odbioru', 1]);
+  if (x.settled_at) out.push(['rozliczenie', 1]);
+  if (['wykonany', 'odebrany'].includes(x.status)) out.push(['status „' + ({ wykonany: 'Wykonany', odebrany: 'Odebrany' })[x.status] + '”', 1]);
+  return out;
+}
+r.get('/montaze/:id/powiazania', idParam, use, wrap(async (req, res) => {
+  const x = (await pool.query('SELECT * FROM installations WHERE id = $1', [req.params.id])).rows[0];
+  if (!x) throw bad(404, 'Nie znaleziono montażu.');
+  res.json(await installationHistory(pool, x));
+}));
+r.delete('/montaze/:id', idParam, use, wrap(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const x = (await client.query('SELECT * FROM installations WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!x) throw bad(404, 'Nie znaleziono montażu.');
+    const h = await installationHistory(client, x);
+    if (h.length) throw bad(409, `Montaż ${x.number} ma historię (${h.map(([l, n]) => n > 1 ? `${l}: ${n}` : l).join(', ')}) – nie można go usunąć. Zmień status na „Anulowany”: montaż zostanie w historii, a ekipa dostanie powiadomienie.`);
+    // Ekipa, która miała ten montaż w planie, dostaje informację (jak przy anulowaniu).
+    if (x.crew_id && x.status !== 'anulowany') await notifyCrew(client, x.crew_id, x, 'montaz.anulowanie', `Usunięto montaż ${x.number} z harmonogramu`, { deleted: true });
+    await client.query('DELETE FROM installations WHERE id = $1', [x.id]);
+    const b = (await client.query('SELECT name FROM buildings WHERE id = $1', [x.building_id])).rows[0] || {};
+    await audit(req, 'montaz.usuniecie', { resource: 'installations', resourceId: x.id, details: { numer: x.number, budynek: b.name, termin: x.planned_date, status: x.status }, client });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+}));
 // Powiadomienie kont instalatorów ekipy o montażu (adres i termin w treści, link do „Moje montaże”).
-async function notifyCrew(client, crewId, x, kind, title) {
+async function notifyCrew(client, crewId, x, kind, title, { deleted = false } = {}) {
   const users = await usersOfCrew(crewId, client);
   if (!users.length) return 0;
   const b = (await client.query('SELECT name, address, city FROM buildings WHERE id = $1', [x.building_id])).rows[0] || {};
@@ -317,7 +358,7 @@ async function notifyCrew(client, crewId, x, kind, title) {
   };
   const when = d(x.planned_date) + (x.planned_end && String(x.planned_end) !== String(x.planned_date) ? ' – ' + d(x.planned_end) : '');
   return notify(users, { kind, title, body: `${b.name || ''}, ${b.address || ''}${b.city ? ', ' + b.city : ''} · termin: ${when}`,
-    link: '/moje-montaze?m=' + x.id, related_type: 'installation', related_id: x.id }, { client });
+    link: deleted ? '/moje-montaze' : '/moje-montaze?m=' + x.id, related_type: 'installation', related_id: x.id }, { client });   // usunięty montaż – link do listy
 }
 
 // Protokół odbioru (PDF): zapisywany jako dokument z wersjami; montaż przechodzi w stan „odebrany”.

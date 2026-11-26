@@ -803,6 +803,7 @@
   // ---------- ramka strony działu: menu boczne, ścieżka, nagłówek zakładki; na telefonie nagłówek działu i menu dolne ----------
   // Zakładka: [klucz, nazwa, grupa w menu bocznym (opcjonalnie), krótka nazwa do menu dolnego (opcjonalnie)].
   const IC = {
+    kosz: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/>',
     harmonogram: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
     serwisy: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
     odczyty: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M12 5v1"/>',

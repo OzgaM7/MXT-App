@@ -26,7 +26,7 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     return { s: r.status, h: r.headers, j: ct.includes('json') ? await r.json().catch(() => ({})) : {} };
   };
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
-  const users = [], PASS = 'Audyt-Test-2026x', T = { customers: [], finance: [], buildings: [], policies: [], items: [], docs: [], pos: [], suppliers: [] };
+  const users = [], PASS = 'Audyt-Test-2026x', T = { customers: [], finance: [], buildings: [], policies: [], items: [], docs: [], pos: [], suppliers: [], installations: [] };
   const { warsawDay } = require('./_setup'), today = warsawDay();
   try {
     for (let i = 0; i < 60; i++) { try { await raw('health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
@@ -192,6 +192,25 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     await call('zakupy/' + PO.id + '/zamow', {}, MG.c);
     eq((await call('zakupy/' + PO.id, { lines: [{ item_id: IT.id, qty: 1, unit_price: 1 }] }, MG.c, 'PUT')).s, 409, 'wysłanego zamówienia nie edytuje się');
 
+    // ---------- N4f: montaż – usuwanie z harmonogramu (bez historii), z historią tylko anulowanie ----------
+    const mkInst = async extra => { const x = await call('d1/montaze', { building_id: B2.id, planned_date: inDays(5), devices_planned: 2, ...extra }, UZ.c); T.installations.push(x.j.id); return x; };
+    r = await mkInst(); eq(r.s, 201, 'montaż w harmonogramie'); const M1 = r.j;
+    eq((await call('d1/montaze/' + M1.id + '/powiazania', null, UZ.c)).j.length, 0, 'nowy montaż bez historii');
+    eq((await call('d1/montaze/' + M1.id, null, MG.c, 'DELETE')).s, 403, 'magazynier nie usuwa montaży');
+    eq((await call('d1/montaze/' + M1.id, null, UZ.c, 'DELETE')).s, 200, 'biuro usuwa montaż wpisany przez pomyłkę');
+    eq((await pool.query('SELECT count(*)::int n FROM installations WHERE id = $1', [M1.id])).rows[0].n, 0, 'montaż usunięty z bazy');
+    eq((await call('d1/montaze/' + M1.id, null, UZ.c)).s, 404, 'usunięty montaż – 404');
+    r = await mkInst(); const M2 = r.j;
+    r = await call('d1/urzadzenia', { serials: ['TAUD-DEV-' + Date.now().toString().slice(-6)], type: 'podzielnik', building_id: B2.id, installation_id: M2.id }, UZ.c); eq(r.s, 201, 'urządzenie zamontowane w ramach montażu');
+    r = await call('d1/montaze/' + M2.id, null, UZ.c, 'DELETE'); ok(r.s === 409 && /urządzenia/.test(r.j.error) && /Anulowany/.test(r.j.error), 'montaż z zamontowanym urządzeniem – 409 z podpowiedzią „Anulowany”');
+    r = await mkInst(); const M3 = r.j;
+    eq((await call('d1/montaze/' + M3.id, { status: 'anulowany' }, UZ.c, 'PATCH')).s, 200, 'montaż anulowany');
+    eq((await call('d1/montaze/' + M3.id, null, UZ.c, 'DELETE')).s, 200, 'anulowany montaż bez historii można usunąć');
+    r = await mkInst(); const M4 = r.j;
+    await call('d1/montaze/' + M4.id, { status: 'wykonany' }, UZ.c, 'PATCH');
+    r = await call('d1/montaze/' + M4.id, null, UZ.c, 'DELETE'); ok(r.s === 409 && /Wykonany/.test(r.j.error), 'wykonany montaż nie jest usuwany (409)');
+    ok((await pool.query(`SELECT count(*)::int n FROM audit_logs WHERE action = 'montaz.usuniecie' AND resource_id = ANY($1::text[])`, [[M1.id, M3.id]])).rows[0].n === 2, 'usunięcia montaży w dzienniku zdarzeń');
+
 
     // ---------- N5: błędy klienta 400/413 zamiast 500, HSTS, dokumenty polis, konflikty równoczesnej edycji ----------
     const post = (p, body, cookie) => raw(p, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body });
@@ -243,6 +262,8 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     await q('UPDATE policies SET renewed_by = NULL, previous_id = NULL WHERE id = ANY($1::uuid[])', [T.policies]);
     await q('DELETE FROM policies WHERE id = ANY($1::uuid[])', [T.policies]);
     await q(`DELETE FROM documents WHERE related_type = 'policy' AND related_id = ANY($1::uuid[])`, [T.policies]);
+    await q('DELETE FROM devices WHERE building_id = ANY($1::uuid[])', [T.buildings]);
+    await q('DELETE FROM installations WHERE id = ANY($1::uuid[]) OR building_id = ANY($2::uuid[])', [T.installations, T.buildings]);
     await q('DELETE FROM units WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM buildings WHERE id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM customers WHERE id = ANY($1::uuid[]) OR created_by = ANY($2::uuid[])', [T.customers, users]);

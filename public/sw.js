@@ -1,6 +1,6 @@
 // Service worker MXT: zapamiętuje pliki aplikacji, żeby działała jak zainstalowana (PWA), i pokazuje powiadomienia push.
 // Zapytania /api/* zawsze idą do serwera (bez cache).
-const CACHE = 'mxt-v26';
+const CACHE = 'mxt-v27';
 const SHELL = ['/', '/app.css', '/app.js', '/modules.js', '/biznes.js', '/dzial1.js', '/dzial2.js', '/szkolenia.js', '/etap4.js', '/konta.js', '/teren.js', '/serwisy.js', '/odczyty.js', '/montaze-import.js', '/asystent.js', '/ghost.js', '/erp-operacje.js', '/erp-magazyn.js', '/erp-pracownicy.js', '/erp-ubezpieczenia.js', '/erp-czesci.js', '/erp-finanse.js',
   '/logo.png', '/logos/podzielniki.png', '/logos/express-parts.png', '/logos/ubezpieczenia.png', '/logos/asystent-telefoniczny.png', '/logos/ghost.webp', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 

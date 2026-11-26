@@ -24,7 +24,7 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     return j;
   };
   const restoreFlags = await require('./_setup').relaxPasswordFlags(pool);
-  const users = [], PASS = 'Ui-Test-2026x', tag = Date.now().toString().slice(-6), T = { items: [], suppliers: [], customers: [] };
+  const users = [], PASS = 'Ui-Test-2026x', tag = Date.now().toString().slice(-6), T = { items: [], suppliers: [], customers: [], buildings: [] };
   let browser;
   try {
     for (let i = 0; i < 80; i++) { try { await fetch(BASE + '/api/health'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
@@ -159,6 +159,19 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     ok(!(await pool.query('SELECT 1 FROM users WHERE login = $1', ['tui.prac' + tag])).rows.length, 'konto bez historii usunięte z interfejsu');
     await p.uncheck('#e-off').catch(() => {});
 
+    // ---------- Harmonogram: usuwanie montażu wpisanego przez pomyłkę (zgłoszenie: „nie mogę usunąć montażu”) ----------
+    const BLD = await call('d1/budynki', { name: '[T-UI] Blok ' + tag, address: 'ul. Interfejsowa ' + tag, city: 'Test', potwierdz_duplikat: true }, AC); T.buildings.push(BLD.id);
+    const MON = await call('d1/montaze', { building_id: BLD.id, planned_date: require('./_setup').warsawDay(2) }, AC);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze'); await p.waitForSelector(`[data-idel="${MON.id}"]`);
+    await p.click(`[data-idel="${MON.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`[data-idel="${MON.id}"]`, { state: 'detached' });
+    ok(!(await pool.query('SELECT 1 FROM installations WHERE id = $1', [MON.id])).rows.length, 'harmonogram: kosz w wierszu usuwa montaż bez historii');
+    const MON2 = await call('d1/montaze', { building_id: BLD.id, planned_date: require('./_setup').warsawDay(3) }, AC);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze'); await p.waitForSelector(`[data-ie="${MON2.id}"].hm-edit`);
+    await p.click(`[data-ie="${MON2.id}"].hm-edit`); await p.waitForSelector('#i-del'); await p.click('#i-del');
+    await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
+    ok(!(await pool.query('SELECT 1 FROM installations WHERE id = $1', [MON2.id])).rows.length, 'okno edycji montażu: „Usuń montaż”');
+
     // ---------- wszystkie zakładki modułów ERP: bez błędów JS i 5xx ----------
     const pages = ['/dzial/podzielniki-i-montaze', '/dzial/sprzedaz-czesci-i-eksport', '/dzial/ubezpieczenia', '/magazyn', '/finanse-firmy', '/pracownicy', '/moj-czas', '/szkolenia', '/pulpit-wlasciciela', '/crm', '/konta'];
     let tabs = 0;
@@ -216,6 +229,8 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await q(`DELETE FROM stock_levels WHERE item_id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM stock_items WHERE id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM suppliers WHERE id = ANY($1::uuid[])`, [T.suppliers]);
+    await q(`DELETE FROM installations WHERE building_id = ANY($1::uuid[])`, [T.buildings]);
+    await q(`DELETE FROM buildings WHERE id = ANY($1::uuid[])`, [T.buildings]);
     await q(`DELETE FROM customers WHERE id = ANY($1::uuid[])`, [T.customers]);
     await q(`DELETE FROM user_views WHERE user_id = ANY($1::uuid[])`, [users]);
     await q(`DELETE FROM sessions WHERE user_id = ANY($1::uuid[])`, [users]);
