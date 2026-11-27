@@ -11,7 +11,7 @@
   const TABS = [['harmonogram', 'Harmonogram montaży', 'Planowanie', 'Harmonogram'], ['zlecenia', 'Wszystkie zlecenia', 'Planowanie', 'Zlecenia'], ['serwisy', 'Serwisy', 'Planowanie'],
     ['odczyty', 'Odczyty', 'Planowanie'], ['pulpit', 'Pulpit działu', 'Planowanie', 'Pulpit'],
     ['rozliczenia', 'Projekty i rozliczenia', 'Rozliczenia', 'Projekty'], ['oferty', 'Oferty', 'Rozliczenia'], ['rentownosc', 'Rentowność', 'Rozliczenia'],
-    ['ekipy', 'Ekipy i instalatorzy', 'Ewidencja', 'Ekipy'], ['budynki', 'Budynki i lokale', 'Ewidencja', 'Budynki'], ['urzadzenia', 'Urządzenia', 'Ewidencja'], ['reklamacje', 'Reklamacje', 'Ewidencja']];
+    ['ekipy', 'Pracownicy', 'Ewidencja', 'Pracownicy'], ['budynki', 'Budynki i lokale', 'Ewidencja', 'Budynki'], ['urzadzenia', 'Urządzenia', 'Ewidencja'], ['reklamacje', 'Reklamacje', 'Ewidencja']];
   const DEV = { podzielnik: 'Podzielnik kosztów', wodomierz: 'Wodomierz', cieplomierz: 'Ciepłomierz', modul_radiowy: 'Moduł radiowy', inny: 'Inne' };
   const DEV_ST = { magazyn: 'Magazyn', zamontowane: 'Zamontowane', zdemontowane: 'Zdemontowane', wadliwe: 'Wadliwe' };
   const INST_ST = { zaplanowany: 'Zaplanowany', w_toku: 'W toku', wykonany: 'Wykonany', odebrany: 'Odebrany (protokół)', anulowany: 'Anulowany' };
@@ -125,7 +125,7 @@
         <div class="kpi kpi-violet"><span class="kpi-v">${esc(sum.montaze_14d)}</span><span class="kpi-l">Montaże w 14 dni</span></div>
         <div class="kpi ${sum.do_odbioru ? 'kpi-warn' : 'kpi-neutral'}"><span class="kpi-v">${esc(sum.do_odbioru)}</span><span class="kpi-l">Czekają na protokół</span></div>
         <div class="kpi ${sum.reklamacje_otwarte ? 'kpi-warn' : 'kpi-neutral'}"><span class="kpi-v">${esc(sum.reklamacje_otwarte)}</span><span class="kpi-l">Otwarte reklamacje</span></div>
-        <div class="kpi kpi-neutral"><span class="kpi-v">${esc(sum.ekipy)}</span><span class="kpi-l">Aktywne ekipy</span></div></section>
+        <div class="kpi kpi-neutral"><span class="kpi-v">${esc(sum.ekipy)}</span><span class="kpi-l">Pracownicy</span></div></section>
       <form class="toolbar" id="bf"><label class="visually-hidden" for="bq">Szukaj</label><input id="bq" name="q" class="select-sm" placeholder="Szukaj: nazwa, adres, miasto, wspólnota" value="${esc(st.q)}">
         <label class="visually-hidden" for="b-arch">Archiwum</label><select id="b-arch" name="arch" class="select-sm"><option value="">Aktywne</option><option value="1"${st.barch ? ' selected' : ''}>Archiwum</option></select>
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><button type="button" class="btn btn-primary btn-sm" id="b-new">Nowy budynek</button>${xl('budynki')}</form>
@@ -188,55 +188,73 @@
   // ---------- harmonogram montaży ----------
   const matText = m => (m || []).map(x => `${x.nazwa}; ${x.ilosc}; ${x.jm}`).join('\n');
   const matParse = t => String(t || '').split('\n').map(l => l.split(';').map(s => s.trim())).filter(a => a[0]).map(([nazwa, ilosc, jm]) => ({ nazwa, ilosc: Number(ilosc || 1), jm: jm || 'szt.' }));
-  // Dodaj nowy montaż / Edytuj montaż. Przy nowym montażu budynek można wybrać z ewidencji albo dodać od razu w formularzu.
-  async function installationForm(x, reload) {
-    const [bs, crews, kt] = await Promise.all([api('d1/budynki'), api('d1/ekipy'), api('d1/kontrakty')]);
-    let newBuilding = null;   // budynek utworzony w tym formularzu (przy kolizji terminu nie tworzy się go drugi raz)
-    const submit = async (f, allow) => {
-      let building = val(f, 'building_id');
-      if (!x && building === '__new') {
-        if (!newBuilding) {
-          if (!val(f, 'nb_name').trim() || !val(f, 'nb_address').trim()) throw new Error('Podaj nazwę i adres nowego budynku.');
-          const nb = { name: val(f, 'nb_name'), address: val(f, 'nb_address'), city: val(f, 'nb_city'), units_count: val(f, 'nb_units') };
-          try { newBuilding = await api('d1/budynki', nb); }
-          catch (e) {
-            if (!(e.data && e.data.duplikat)) throw e;
-            if (window.confirm(e.data.error + '\n\nOK – użyj istniejącego budynku.\nAnuluj – dodaj nowy budynek mimo to.')) newBuilding = { id: e.data.istniejacy.id };
-            else newBuilding = await api('d1/budynki', { ...nb, potwierdz_duplikat: true });
-          }
-        }
-        building = newBuilding.id;
-      }
-      const d = { building_id: building, crew_id: val(f, 'crew_id') || null, project_id: val(f, 'project_id') || null, planned_date: val(f, 'planned_date'), planned_end: val(f, 'planned_end') || null,
-        scope: val(f, 'scope'), devices_planned: val(f, 'devices_planned'), materials: matParse(val(f, 'materials')), notes: val(f, 'notes'), allow_clash: allow };
-      if (x) { delete d.building_id; delete d.allow_clash; await api('d1/montaze/' + x.id, { ...d, updated_at: x.updated_at }, 'PATCH'); } else await api('d1/montaze', d);
+  // Dodaj nowy montaż / Edytuj montaż. Montaż obejmuje osiedle: firma zlecająca z CRM, nazwa osiedla, adresy (jeden na linię)
+  // i liczba budynków. Wykonawców wybiera się z listy pracowników (Ewidencja → Pracownicy); dostają powiadomienie i widzą montaż w „Moje montaże”.
+  const workersBox = (ws, chosen) => ws.length
+    ? `<div class="wk-pick">${ws.map(w => `<label class="toggle wk-item"><input type="checkbox" name="worker" value="${w.id}"${chosen.includes(w.id) ? ' checked' : ''}> <span>${esc(w.name)}${w.position ? ' <small class="muted">· ' + esc(w.position) + '</small>' : ''}${w.user_login ? '' : ' <small class="muted">(bez konta)</small>'}</span></label>`).join('')}</div>`
+    : '<p class="muted small">Brak pracowników. Dodaj ich w zakładce Ewidencja → Pracownicy.</p>';
+  const pickedWorkers = f => [...f.querySelectorAll('[name=worker]:checked')].map(i => i.value);
+  async function installationForm(x, reload, draft) {
+    const [cust, ws] = await Promise.all([api('klienci'), api('d1/pracownicy-dzialu')]);
+    const d0 = draft || (x ? { customer_id: x.customer_ref, site_name: x.site_name || (x.building_id ? '' : x.building_name), addresses: x.addresses, buildings_count: x.buildings_count,
+      planned_date: x.planned_date, planned_end: x.planned_end, scope: x.scope, devices_planned: x.devices_planned, materials: matText(x.materials), notes: x.notes, worker_ids: (x.workers || []).map(w => w.id) } : {});
+    const chosen = d0.worker_ids || [];
+    const active = ws.filter(w => w.is_active || chosen.includes(w.id));
+    const legacy = x && x.building_id && !x.site_name;   // montaż sprzed zmiany – przypisany do budynku z ewidencji
+    const read = f => ({ customer_id: val(f, 'customer_id') || null, site_name: val(f, 'site_name'), addresses: val(f, 'addresses'), buildings_count: val(f, 'buildings_count'),
+      planned_date: val(f, 'planned_date'), planned_end: val(f, 'planned_end') || null, scope: val(f, 'scope'), devices_planned: val(f, 'devices_planned'), materials: val(f, 'materials'),
+      notes: val(f, 'notes'), worker_ids: pickedWorkers(f) });
+    const submit = async (d, allow) => {
+      if (!x && !d.customer_id) throw new Error('Wybierz firmę zlecającą albo dodaj nową w CRM.');
+      const b = { ...d, materials: matParse(d.materials), allow_clash: allow };
+      if (x) await api('d1/montaze/' + x.id, { ...b, updated_at: x.updated_at }, 'PATCH'); else await api('d1/montaze', b);
       toast(x ? 'Zapisano zmiany montażu.' : 'Dodano montaż do harmonogramu.'); reload();
     };
     modal(x ? 'Edytuj montaż ' + x.number : 'Dodaj nowy montaż', `
-      <div class="field-row">${field('i-b', 'Budynek', `<select id="i-b" name="building_id" ${x ? 'disabled' : 'required'}>${x ? opts(bs, x.building_id, b => b.name + ', ' + b.address, b => b.id)
-        : '<option value="">– wybierz –</option><option value="__new">+ Nowy budynek…</option>' + opts(bs, '', b => b.name + ', ' + b.address, b => b.id)}</select>`)}
-        ${field('i-k', 'Kontrakt', `<select id="i-k" name="project_id">${opts(kt.filter(k => !['anulowany', 'rozliczony'].includes(k.status)), x && x.project_id, k => k.number + ' – ' + k.title, k => k.id, '– bez kontraktu –')}</select>`)}</div>
-      ${x ? '' : `<div id="i-nb" class="subform" hidden><p class="label-sm">Nowy budynek (trafi do ewidencji budynków)</p>
-        <div class="field-row">${field('i-nbn', 'Nazwa', '<input id="i-nbn" name="nb_name" maxlength="200" placeholder="np. SM Słoneczna, blok 7">')}${field('i-nbu', 'Liczba lokali', '<input id="i-nbu" name="nb_units" type="number" min="0" inputmode="numeric">')}</div>
-        <div class="field-row">${field('i-nba', 'Adres', '<input id="i-nba" name="nb_address" maxlength="300">')}${field('i-nbc', 'Miasto', '<input id="i-nbc" name="nb_city" maxlength="100">')}</div></div>`}
-      <div class="field-row">${field('i-c', 'Ekipa', `<select id="i-c" name="crew_id">${opts(crews.filter(c => !c.virtual && c.is_active), x && x.crew_id, c => c.name + (c.leader ? ' (' + c.leader + ')' : ''), c => c.id, '– nieprzydzielona –')}</select>`)}
-        ${field('i-d', 'Termin rozpoczęcia', `<input id="i-d" name="planned_date" type="date" required value="${esc(x ? x.planned_date : '')}">`)}${field('i-e', 'Termin zakończenia', `<input id="i-e" name="planned_end" type="date" value="${esc(x && x.planned_end ? x.planned_end : '')}">`)}</div>
-      ${field('i-s', 'Zakres prac', `<textarea id="i-s" name="scope" rows="2">${esc(x ? x.scope : '')}</textarea>`)}
-      <div class="field-row">${field('i-n', 'Liczba urządzeń do montażu', `<input id="i-n" name="devices_planned" type="number" min="0" value="${esc(x ? x.devices_planned : '')}">`)}</div>
-      ${field('i-m', 'Lista materiałowa (jedna pozycja na linię: nazwa; ilość; jm)', `<textarea id="i-m" name="materials" rows="3" placeholder="Podzielnik elektroniczny; 48; szt.&#10;Plomba; 48; szt.">${esc(x ? matText(x.materials) : '')}</textarea>`)}
-      ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(x ? x.notes : '')}</textarea>`)}
+      <div class="field-row">${field('i-cust', 'Firma zlecająca', `<select id="i-cust" name="customer_id"${x ? '' : ' required'}>${opts(cust, d0.customer_id, c => c.name, c => c.id, '– wybierz z CRM –')}</select>`)}
+        <div class="field"><span class="flabel">&nbsp;</span><button type="button" class="btn btn-ghost btn-sm" id="i-newc">Nowa firma w CRM</button></div></div>
+      ${legacy ? `<p class="muted small">Budynek z ewidencji: <b>${esc(x.building_name)}</b>${x.address ? ', ' + esc(x.address) : ''}. Możesz wpisać osiedle i adresy – zastąpią go w harmonogramie.</p>` : ''}
+      <div class="field-row">${field('i-site', 'Osiedle / lokalizacja', `<input id="i-site" name="site_name" maxlength="200"${legacy ? '' : ' required'} value="${esc(d0.site_name || '')}" placeholder="np. Osiedle Słoneczne, Kraków">`)}
+        ${field('i-bc', 'Liczba budynków', `<input id="i-bc" name="buildings_count" type="number" min="0" inputmode="numeric" value="${esc(d0.buildings_count ?? '')}">`)}</div>
+      ${field('i-addr', 'Adresy (jeden na linię)', `<textarea id="i-addr" name="addresses" rows="3" placeholder="Słoneczna 1–15&#10;Leśna 2, 4, 6">${esc(d0.addresses || '')}</textarea>`)}
+      <div class="field-row">${field('i-d', 'Termin rozpoczęcia', `<input id="i-d" name="planned_date" type="date" required value="${esc(d0.planned_date || '')}">`)}${field('i-e', 'Termin zakończenia', `<input id="i-e" name="planned_end" type="date" value="${esc(d0.planned_end || '')}">`)}</div>
+      ${field('i-s', 'Zakres prac', `<textarea id="i-s" name="scope" rows="2">${esc(d0.scope || '')}</textarea>`)}
+      <div class="field-row">${field('i-n', 'Liczba urządzeń do montażu', `<input id="i-n" name="devices_planned" type="number" min="0" value="${esc(d0.devices_planned ?? '')}">`)}</div>
+      ${field('i-m', 'Lista materiałowa (jedna pozycja na linię: nazwa; ilość; jm)', `<textarea id="i-m" name="materials" rows="3" placeholder="Podzielnik elektroniczny; 48; szt.&#10;Plomba; 48; szt.">${esc(d0.materials || '')}</textarea>`)}
+      ${field('i-notes', 'Uwagi', `<textarea id="i-notes" name="notes" rows="2">${esc(d0.notes || '')}</textarea>`)}
+      <fieldset class="checks"><legend class="flabel">Pracownicy (opcjonalnie – można przydzielić później)</legend>${workersBox(active, chosen)}</fieldset>
       ${x ? `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" id="i-mat">Wydaj materiał z magazynu</button><button type="button" class="btn btn-secondary btn-sm" id="i-time">Czas pracy</button>${['wykonany', 'odebrany'].includes(x.status) ? '' : '<button type="button" class="btn btn-ghost btn-sm" id="i-del">Usuń montaż</button>'}</div>` : ''}`,
     { submit: x ? 'Zapisz zmiany' : 'Dodaj montaż', wide: true, onSubmit: async f => {
-      try { await submit(f, false); }
-      catch (e) { if (/nakładanie/.test(e.message) && !x) { modal('Kolizja terminu ekipy', `<p>${esc(e.message)}</p>`, { submit: 'Dodaj mimo to', onSubmit: () => submit(f, true) }); return; } throw e; }
+      const d = read(f);
+      try { await submit(d, false); }
+      catch (e) { if (/nakładanie/.test(e.message)) { modal('Kolizja terminu pracowników', `<p>${esc(e.message)}</p>`, { submit: x ? 'Zapisz mimo to' : 'Dodaj mimo to', onSubmit: () => submit(d, true) }); return; } throw e; }
     } });
-    const im = document.querySelector('#modal-box #i-mat'), it = document.querySelector('#modal-box #i-time');
+    const box = document.querySelector('#modal-box');
+    // Nowa firma w CRM: po dodaniu wraca do formularza montażu z wpisanymi danymi i wybraną firmą.
+    box.querySelector('#i-newc').addEventListener('click', () => {
+      const d = read(box.querySelector('form'));
+      B().customerForm(null, r => installationForm(x, reload, { ...d, customer_id: r && r.id }), { kind: 'firma', departments: [DEP] });
+    });
+    const im = box.querySelector('#i-mat'), it = box.querySelector('#i-time');
     if (im) im.addEventListener('click', () => window.MXT_ERP.issueForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
     if (it) it.addEventListener('click', () => window.MXT_ERP.timeForm({ related_type: 'installation', related_id: x.id, title: x.number }, reload));
-    const idel = document.querySelector('#modal-box #i-del');
+    const idel = box.querySelector('#i-del');
     if (idel) idel.addEventListener('click', () => deleteInstallation(x, reload).catch(e => toast(e.message)));
-    const sel = document.querySelector('#modal-box #i-b');
-    if (sel && !x) sel.addEventListener('change', () => { document.querySelector('#modal-box #i-nb').hidden = sel.value !== '__new'; });
+  }
+  // Przydział pracowników z harmonogramu (bez otwierania całego formularza).
+  async function assignWorkers(x, reload) {
+    const ws = await api('d1/pracownicy-dzialu'), chosen = (x.workers || []).map(w => w.id);
+    const save = async (ids, allow) => {
+      await api('d1/montaze/' + x.id, { worker_ids: ids, allow_clash: allow, updated_at: x.updated_at }, 'PATCH');
+      toast(ids.length ? 'Przydzielono pracowników – dostaną powiadomienie.' : 'Usunięto przydział pracowników.'); reload();
+    };
+    modal('Przydziel pracowników – ' + x.number, `<p class="muted small">${esc(x.building_name || '')}${x.planned_date ? ' · ' + esc(fd(x.planned_date)) : ''}${x.planned_end && x.planned_end !== x.planned_date ? ' – ' + esc(fd(x.planned_end)) : ''}</p>
+      ${workersBox(ws.filter(w => w.is_active || chosen.includes(w.id)), chosen)}`,
+    { submit: 'Zapisz przydział', onSubmit: async f => {
+      const ids = pickedWorkers(f);
+      try { await save(ids, false); }
+      catch (e) { if (/nakładanie/.test(e.message)) { modal('Kolizja terminu pracowników', `<p>${esc(e.message)}</p>`, { submit: 'Przydziel mimo to', onSubmit: () => save(ids, true) }); return; } throw e; }
+    } });
   }
   // Usunięcie montażu: tylko bez historii; z historią – komunikat z listą powiązań i podpowiedź „Anulowany”.
   async function deleteInstallation(x, reload) {
@@ -257,7 +275,7 @@
       toast('Protokół ' + r.number + ' (wersja ' + r.version + ') gotowy – link „Protokół PDF” przy montażu.'); reload();
     } });
   }
-  // Harmonogram: lista po dniach, tydzień albo miesiąc; filtry ekipy i statusu. Zmiana widoku przerysowuje się lokalnie,
+  // Harmonogram: lista po dniach, tydzień albo miesiąc; filtry pracownika i statusu. Zmiana widoku przerysowuje się lokalnie,
   // a gdy potrzebne są wcześniejsze dane niż pobrane – strona pobiera je od nowa.
   const hst = { widok: 'lista', zakres: 'biezace', ekipa: '', status: '', kursor: '' };
   let H = null;   // { list, crews, od } – ostatnio pobrane montaże i ekipy
@@ -307,7 +325,11 @@
     return n + ' dni · do ' + ddmm(b) + (a <= t && t <= b && ACTIVE.includes(x.status) ? ' · dzień ' + days(a, t) + ' z ' + n : '');
   }
   const initials = n => { const w = (String(n || '').replace(/\[[^\]]*\]/g, '').match(/[\p{L}\d]+/gu) || ['?']); return (w.length > 1 ? w[0][0] + (/^\d+$/.test(w[1]) ? w[1] : w[1][0]) : w[0].slice(0, 2)).toUpperCase().slice(0, 3); };
-  const crewAv = (id, name) => `<span class="crew-av crew-av-${Math.max(0, H.crews.findIndex(c => c.id === id)) % 5}" aria-hidden="true">${esc(initials(name))}</span>`;
+  const crewAv = (id, name) => `<span class="crew-av crew-av-${Math.max(0, H.workers.findIndex(c => c.id === id)) % 5}" aria-hidden="true">${esc(initials(name))}</span>`;
+  // Wykonawcy montażu: przydzieleni pracownicy (dawniej ekipa – starsze montaże).
+  const wks = x => x.workers || [];
+  const assigned = x => !!(x.crew_id || wks(x).length);
+  const whoText = x => wks(x).length ? wks(x).map(w => w.name).join(', ') : x.crew_name || '';
   const ic = (k, c) => U().icon(k, c);
   const cursor = () => hst.kursor || todayL();
   // Zakres dat widoku; '' = bez dolnej granicy (lista „Wszystkie terminy”).
@@ -315,15 +337,17 @@
     : hst.widok === 'miesiac' ? [weekStart(monthStart(cursor())), addDays(weekStart(monthEnd(cursor())), 6)] : [hst.zakres === 'biezace' ? from14() : '', ''];
   // Pobieramy 31 dni wcześniej, żeby złapać montaże wielodniowe rozpoczęte przed zakresem.
   const fetchFrom = () => { const a = viewRange()[0]; return a === '' ? '' : addDays(a < from14() ? a : from14(), -31); };
-  const pass = x => (!hst.ekipa || (hst.ekipa === '__brak' ? !x.crew_id : x.crew_id === hst.ekipa))
+  const pass = x => (!hst.ekipa || (hst.ekipa === '__brak' ? !assigned(x) : wks(x).some(w => w.id === hst.ekipa)))
     && (!hst.status || (hst.status === 'aktywne' ? [...ACTIVE, 'wykonany'].includes(x.status) : x.status === hst.status));
 
   function row(x) {
-    const crew = x.crew_id ? `<span class="crew-chip">${crewAv(x.crew_id, x.crew_name)}<span>${esc(x.crew_name)}</span></span>`
-      : ACTIVE.includes(x.status) ? `<button type="button" class="hm-assign" data-ie="${x.id}">Przydziel ekipę</button>` : '<span class="muted">–</span>';
+    const ws = wks(x), canAssign = ACTIVE.includes(x.status);
+    const crew = ws.length ? `<${canAssign ? `button type="button" data-iw="${x.id}" title="Zmień przydział pracowników"` : 'span'} class="crew-chip wk-chips">${ws.slice(0, 3).map(w => crewAv(w.id, w.name)).join('')}<span>${esc(ws.length > 2 ? ws[0].name + ' +' + (ws.length - 1) : ws.map(w => w.name).join(', '))}</span></${canAssign ? 'button' : 'span'}>`
+      : x.crew_id ? `<span class="crew-chip"><span class="crew-av" aria-hidden="true">${esc(initials(x.crew_name))}</span><span>${esc(x.crew_name)}</span></span>${canAssign ? ` <button type="button" class="hm-assign" data-iw="${x.id}">Przydziel pracowników</button>` : ''}`
+      : canAssign ? `<button type="button" class="hm-assign" data-iw="${x.id}">Przydziel pracowników</button>` : '<span class="muted">–</span>';
     const st = x.status === 'odebrany' ? `<span class="hm-done">${chip('odebrany', 'Odebrany')}${x.protocol_document_id ? B().pdfLink('/api/dokumenty/' + x.protocol_document_id + '/plik', 'Protokół PDF') : ''}</span>`
       : `<label class="visually-hidden" for="is-${x.id}">Status montażu ${esc(x.number)}</label><select class="status-select hm-ss st-${esc(x.status)}" id="is-${x.id}" data-is="${x.id}">${Object.entries(INST_ST).filter(([k]) => k !== 'odebrany').map(([k, v]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${v}</option>`).join('')}</select>${x.status === 'wykonany' ? `<button type="button" class="btn btn-primary btn-sm" data-ip="${x.id}">Protokół odbioru</button>` : ''}`;
-    const meta = [durText(x), x.project_number && esc(x.project_number)].filter(Boolean).join(' · ');
+    const meta = [durText(x), x.buildings_count ? esc(x.buildings_count + ' bud.') : '', x.customer_name && esc(x.customer_name), x.project_number && esc(x.project_number)].filter(Boolean).join(' · ');
     return `<article class="hm-row hm-${esc(x.status)}">
       <div class="hm-obj"><button type="button" class="hm-name" data-ie="${x.id}">${esc(x.building_name)}</button> <span class="hm-no">${esc(x.number)}</span>
         <span class="hm-addr">${esc(x.address)}${x.city ? ', ' + esc(x.city) : ''}</span>${meta ? `<span class="hm-meta">${meta}</span>` : ''}</div>
@@ -346,7 +370,7 @@
     return (u.length ? u.map(d => dayGroup(d, up[d])).join('') : '<p class="hm-empty">Brak zaplanowanych montaży od dziś.</p>')
       + (p.length ? `<details class="hm-past"${!u.length || hst.status === 'wykonany' ? ' open' : ''}><summary>Wcześniejsze montaże (${nPast})</summary>${p.map(d => dayGroup(d, past[d])).join('')}</details>` : '');
   }
-  const card = x => `<button type="button" class="hm-card hm-${esc(x.status)}" data-ie="${x.id}"><span class="hm-card-n">${esc(x.building_name)}</span><span class="hm-card-s">${x.crew_name ? esc(x.crew_name) : '<b>bez ekipy</b>'} · ${esc(x.devices_planned || 0)} urz.</span></button>`;
+  const card = x => `<button type="button" class="hm-card hm-${esc(x.status)}" data-ie="${x.id}"><span class="hm-card-n">${esc(x.building_name)}</span><span class="hm-card-s">${assigned(x) ? esc(whoText(x)) : '<b>bez pracowników</b>'} · ${esc(x.devices_planned || 0)} urz.</span></button>`;
   function weekHtml(xs) {
     const ws = weekStart(cursor()), t = todayL();
     return `<div class="hm-week">${[0, 1, 2, 3, 4, 5, 6].map(i => {
@@ -361,7 +385,7 @@
     for (let d = gs; d <= ge; d = addDays(d, 1)) {
       const its = xs.filter(x => covers(x, d)), out = d.slice(0, 7) !== k.slice(0, 7);
       cells += `<div class="hm-md${out ? ' hm-out' : ''}${d === t ? ' hm-today' : ''}${its.length ? ' hm-has' : ''}"><button type="button" class="hm-mdn" data-day="${d}" aria-label="${esc(dayLabel(d))}: ${esc(nMont(its.length))}. Pokaż tydzień">${D(d).getDate()}</button>
-        ${its.slice(0, 3).map(x => `<button type="button" class="hm-me hm-${esc(x.status)}" data-ie="${x.id}" title="${esc(x.number + ' · ' + x.building_name + (x.crew_name ? ' · ' + x.crew_name : ' · bez ekipy'))}">${esc(x.building_name)}</button>`).join('')}
+        ${its.slice(0, 3).map(x => `<button type="button" class="hm-me hm-${esc(x.status)}" data-ie="${x.id}" title="${esc(x.number + ' · ' + x.building_name + (assigned(x) ? ' · ' + whoText(x) : ' · bez pracowników'))}">${esc(x.building_name)}</button>`).join('')}
         ${its.length > 3 ? `<button type="button" class="hm-more" data-day="${d}">+${its.length - 3} więcej</button>` : ''}</div>`;
     }
     return `<div class="hm-month"><div class="hm-mh" aria-hidden="true">${WD3.map(w => `<span>${w}</span>`).join('')}</div><div class="hm-mg">${cells}</div></div>`;
@@ -369,38 +393,39 @@
 
   async function harmonogram(body, reload, alive) {
     const od = fetchFrom();
-    const [list, crews, [sum, srv, odc]] = await Promise.all([api('d1/montaze' + (od ? '?od=' + od : '')), api('d1/ekipy'), S]);
+    const [list, workers, [sum, srv, odc]] = await Promise.all([api('d1/montaze' + (od ? '?od=' + od : '')), api('d1/pracownicy-dzialu'), S]);
     if (!alive()) return;
-    H = { list, crews: crews.filter(c => !c.virtual && c.is_active), od };
+    H = { list, workers: workers.filter(w => w.is_active), od };
     const t = todayL(), act = list.filter(x => ACTIVE.includes(x.status));
     const today = act.filter(x => covers(x, t)), d14 = act.filter(x => x.planned_date >= t && x.planned_date <= addDays(t, 14));
-    const crewToday = [...new Set(today.map(x => x.crew_name).filter(Boolean))];
+    const crewToday = [...new Set(today.flatMap(x => wks(x).length ? wks(x).map(w => w.name) : x.crew_name ? [x.crew_name] : []))];
     const tag = (txt, tone) => `<span class="hk-tag hk-${tone}">${esc(txt)}</span>`;
     const kpi = (label, v, foot, act2) => `<${act2 ? `button type="button" class="hk hk-btn" ${act2}` : 'div class="hk"'}><span class="hk-l">${esc(label)}</span><span class="hk-v${v ? '' : ' hk-zero'}">${esc(v)}</span>${foot || ''}</${act2 ? 'button' : 'div'}>`;
     const kpis = [
       kpi('Montaże dziś', sum.trwajace, `<span class="hk-f">${crewToday.length ? esc(crewToday.join(' · ')) : 'brak montaży'}</span>`),
       kpi('Najbliższe 14 dni', sum.montaze_14d, `<span class="hk-f">${esc(d14.reduce((s, x) => s + (x.devices_planned || 0), 0).toLocaleString('pl-PL'))} urządzeń</span>`),
-      kpi('Bez ekipy', sum.bez_ekipy, sum.bez_ekipy ? tag('do przydzielenia', 'warn') : tag('wszystkie przydzielone', 'ok'), sum.bez_ekipy ? 'data-filter="bez"' : ''),
+      kpi('Bez pracowników', sum.bez_ekipy, sum.bez_ekipy ? tag('do przydzielenia', 'warn') : tag('wszystkie przydzielone', 'ok'), sum.bez_ekipy ? 'data-filter="bez"' : ''),
       kpi('Czekają na protokół', sum.do_odbioru, sum.do_odbioru ? tag('do odbioru', 'warn') : '', sum.do_odbioru ? 'data-filter="protokol"' : ''),
       srv ? kpi('Serwisy do przydziału', srv.nieprzypisane, srv.po_terminie_przydzialu ? tag(srv.po_terminie_przydzialu + ' po terminie', 'danger') : srv.nieprzypisane ? tag('czekają', 'warn') : '', 'data-gotab="serwisy"') : '',
       odc ? kpi('Odczyty po terminie', odc.po_terminie, odc.po_terminie ? tag('zaległe', 'danger') : tag('wszystko w terminie', 'ok'), 'data-gotab="odczyty"') : ''
     ].join('');
     // Wymaga uwagi: tylko sprawy, które czekają na reakcję.
-    const unassigned = act.filter(x => !x.crew_id && span(x)[1] >= t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
+    const unassigned = act.filter(x => !assigned(x) && span(x)[1] >= t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
     const oldest = list.filter(x => x.status === 'wykonany').sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
     const attn = [];
     const ai = (n, tone, title, sub, a) => attn.push(`<li><button type="button" class="attn-i" ${a}><span class="attn-n attn-${tone}">${esc(n)}</span><span class="attn-t">${esc(title)}<small>${esc(sub)}</small></span>${ic('right', 'ic ic-sm')}</button></li>`);
-    if (sum.bez_ekipy) ai(sum.bez_ekipy, 'warn', 'Montaże bez ekipy', unassigned ? 'najbliższy: ' + rel(unassigned.planned_date) : 'przydziel ekipę w formularzu montażu', 'data-filter="bez"');
+    if (sum.bez_ekipy) ai(sum.bez_ekipy, 'warn', 'Montaże bez pracowników', unassigned ? 'najbliższy: ' + rel(unassigned.planned_date) : 'przydziel pracowników', 'data-filter="bez"');
     if (srv && srv.po_terminie_przydzialu) ai(srv.po_terminie_przydzialu, 'danger', 'Serwisy po terminie przydziału', 'przydziel serwisanta', 'data-gotab="serwisy"');
     else if (srv && srv.nieprzypisane) ai(srv.nieprzypisane, 'warn', 'Serwisy do przydzielenia', 'czekają na serwisanta', 'data-gotab="serwisy"');
     if (sum.do_odbioru) ai(sum.do_odbioru, 'warn', 'Montaże do protokołu odbioru', oldest ? 'najstarszy: ' + rel(oldest.planned_date) : 'wykonane, bez protokołu', 'data-filter="protokol"');
     if (odc && odc.po_terminie) ai(odc.po_terminie, 'danger', 'Odczyty po terminie', 'zaplanuj odczyt', 'data-gotab="odczyty"');
     if (sum.reklamacje_otwarte) ai(sum.reklamacje_otwarte, 'warn', 'Otwarte reklamacje', 'do rozpatrzenia', 'data-gotab="reklamacje"');
     const okLine = `<p class="attn-fine"><span class="attn-n attn-ok">${ic('ok', 'ic ic-sm')}</span>${attn.length ? 'Pozostałe sprawy w terminie' : 'Wszystko w terminie – nic nie czeka na reakcję'}</p>`;
-    // Ekipy dziś: w pracy (montaż obejmuje dzisiejszy dzień) albo wolna z najbliższym montażem.
-    const crewRows = H.crews.map(c => {
-      const job = today.find(x => x.crew_id === c.id), next = act.filter(x => x.crew_id === c.id && x.planned_date > t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
-      return `<li class="crew-r">${crewAv(c.id, c.name)}<span class="crew-t">${esc(c.name)}<small>${job ? esc(job.building_name + (job.city ? ', ' + job.city : '')) : next ? 'następny montaż: ' + esc(rel(next.planned_date)) : 'brak zaplanowanych montaży'}</small></span>${job ? chip('teal', 'w pracy') : chip('ok', 'wolna')}</li>`;
+    // Pracownicy dziś: na montażu (montaż obejmuje dzisiejszy dzień) albo wolny z najbliższym montażem.
+    const mine = (x, w) => wks(x).some(v => v.id === w.id);
+    const crewRows = H.workers.map(c => {
+      const job = today.find(x => mine(x, c)), next = act.filter(x => mine(x, c) && x.planned_date > t).sort((a, b) => a.planned_date < b.planned_date ? -1 : 1)[0];
+      return `<li class="crew-r">${crewAv(c.id, c.name)}<span class="crew-t">${esc(c.name)}<small>${job ? esc(job.building_name + (job.city ? ', ' + job.city : '')) : next ? 'następny montaż: ' + esc(rel(next.planned_date)) : 'brak zaplanowanych montaży'}</small></span>${job ? chip('teal', 'na montażu') : chip('ok', 'wolny')}</li>`;
     }).join('');
     const xlOn = U().has('export.xlsx');
     body.innerHTML = `<p data-ws-sub></p>
@@ -416,9 +441,9 @@
       <div class="hm-grid">
         <section class="panel hm-attn" aria-labelledby="hm-attn-t"><h2 class="panel-title" id="hm-attn-t">Wymaga uwagi</h2>${attn.length ? `<ul class="attn">${attn.join('')}</ul>` : ''}${okLine}</section>
         <section class="panel hm-main" aria-label="Montaże"><div id="hm-view"></div>
-          <p class="hm-note">Kolizje terminów ekip są wykrywane automatycznie. Monterzy z kontem dostają powiadomienie o przydziale i zmianie terminu.</p></section>
-        <section class="panel hm-crews" aria-labelledby="hm-crews-t"><h2 class="panel-title" id="hm-crews-t">Ekipy dziś</h2>
-          ${crewRows ? `<ul class="crew-list">${crewRows}</ul>` : '<p class="empty-inline">Brak aktywnych ekip. <button type="button" class="linkish" data-gotab="ekipy">Dodaj ekipę</button></p>'}</section>
+          <p class="hm-note">Kolizje terminów pracowników są wykrywane automatycznie. Pracownicy z kontem w aplikacji dostają powiadomienie o przydziale i zmianie terminu, a montaż widzą w „Moje montaże”.</p></section>
+        <section class="panel hm-crews" aria-labelledby="hm-crews-t"><h2 class="panel-title" id="hm-crews-t">Pracownicy dziś</h2>
+          ${crewRows ? `<ul class="crew-list">${crewRows}</ul>` : '<p class="empty-inline">Brak pracowników. <button type="button" class="linkish" data-gotab="ekipy">Dodaj pracownika</button></p>'}</section>
       </div>`;
     const views = [...body.querySelectorAll('[data-v]')], xlA = body.querySelector('#hm-xl'), view = body.querySelector('#hm-view'), grid = body.querySelector('.hm-grid');
     const setSub = txt => { const el = body.querySelector('[data-ws-sub]') || (body.closest('.ws') || document).querySelector('.ws-sub'); if (el) { el.textContent = txt; el.hidden = false; } };
@@ -434,7 +459,7 @@
         <button type="button" class="btn btn-secondary" data-nav="0">Dziś</button><button type="button" class="btn btn-secondary btn-icon" data-nav="1" aria-label="${what === 'w' ? 'Następny tydzień' : 'Następny miesiąc'}">${ic('right')}</button>
         <b class="hm-navl">${esc(what === 'w' ? weekLabel(weekStart(cursor())) : monthLabel(cursor()))}</b></div>`;
       const sel = (id, f, label, o) => `<label class="visually-hidden" for="${id}">${label}</label><select id="${id}" class="select-sm" data-f="${f}">${o.map(([k, v]) => `<option value="${esc(k)}"${hst[f] === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
-      const filters = sel('hf-c', 'ekipa', 'Ekipa', [['', 'Wszystkie ekipy'], ...H.crews.map(c => [c.id, c.name]), ['__brak', 'Bez ekipy']])
+      const filters = sel('hf-c', 'ekipa', 'Pracownik', [['', 'Wszyscy pracownicy'], ...H.workers.map(c => [c.id, c.name]), ['__brak', 'Bez pracowników']])
         + sel('hf-s', 'status', 'Status', [['', 'Wszystkie statusy'], ['aktywne', 'Aktywne (bez odebranych)'], ...Object.entries(INST_ST)])
         + (hst.widok === 'lista' ? sel('hf-z', 'zakres', 'Zakres', [['biezace', 'Od ' + fd(from14())], ['wszystkie', 'Wszystkie terminy']]) : '');
       const n = xs.length;
@@ -445,14 +470,14 @@
       // Zapisane widoki: widok kalendarza i filtry (ekipa, status, zakres) – własne dla każdego użytkownika.
       U().savedViews(view.querySelector('.hm-sv'), 'harmonogram', () => ({ widok: hst.widok, zakres: hst.zakres, ekipa: hst.ekipa, status: hst.status }),
         p => apply({ widok: ['lista', 'tydzien', 'miesiac'].includes(p.widok) ? p.widok : 'lista', zakres: p.zakres === 'wszystkie' ? 'wszystkie' : 'biezace',
-          ekipa: typeof p.ekipa === 'string' ? p.ekipa : '', status: typeof p.status === 'string' ? p.status : '' }));
+          ekipa: typeof p.ekipa === 'string' && (p.ekipa === '__brak' || H.workers.some(w => w.id === p.ekipa)) ? p.ekipa : '', status: typeof p.status === 'string' ? p.status : '' }));
       views.forEach(v => { const o = v.dataset.v === hst.widok; v.classList.toggle('seg-on', o); v.setAttribute('aria-pressed', String(o)); });
       setSub(hst.widok === 'tydzien' ? weekLabel(weekStart(cursor())) : hst.widok === 'miesiac' ? monthLabel(cursor())
         : hst.zakres === 'biezace' ? 'Od dziś i ostatnie 14 dni · ' + nMont(n) : 'Wszystkie terminy · ' + nMont(n));
       if (xlA) {
         const p = {};
         if (a && hst.widok !== 'lista') { p.od = a; p.do = b; } else if (a) p.od = a;
-        if (hst.ekipa && hst.ekipa !== '__brak') p.crew_id = hst.ekipa;
+        if (hst.ekipa && hst.ekipa !== '__brak') p.pracownik = hst.ekipa;
         if (INST_ST[hst.status]) p.status = hst.status;
         xlA.href = '/api/eksport/d1/montaze?' + new URLSearchParams(p);
       }
@@ -462,8 +487,9 @@
     body.querySelector('#i-xls').addEventListener('click', () => window.MXT_IMPORT.excel(reload));
     body.querySelector('#i-doc').addEventListener('click', () => window.MXT_IMPORT.document(reload));
     body.addEventListener('click', async e => {
-      const el = e.target.closest('[data-ie],[data-idel],[data-ip],[data-nav],[data-day],[data-filter],[data-gotab]'); if (!el) return;
+      const el = e.target.closest('[data-ie],[data-iw],[data-idel],[data-ip],[data-nav],[data-day],[data-filter],[data-gotab]'); if (!el) return;
       const ds = el.dataset;
+      if (ds.iw) return assignWorkers(list.find(x => x.id === ds.iw) || await api('d1/montaze/' + ds.iw), reload).catch(err => toast(err.message));
       if (ds.idel) return deleteInstallation(list.find(x => x.id === ds.idel) || await api('d1/montaze/' + ds.idel), reload).catch(err => toast(err.message));
       if (ds.ie) return installationForm(await api('d1/montaze/' + ds.ie), reload);
       if (ds.ip) return protocolForm(list.find(x => x.id === ds.ip), reload);
@@ -486,42 +512,39 @@
     paint();
   }
 
-  // ---------- ekipy ----------
+  // ---------- pracownicy (zakładka „ekipy” – adres bez zmian dla zapisanych linków) ----------
+  // Pracownik: imię i nazwisko, dział, stanowisko, telefon, e-mail. Przydzielany do montaży w harmonogramie.
+  const WDEPT = { 'podzielniki-i-montaze': 'Ciepłomierze i podzielniki', 'sprzedaz-czesci-i-eksport': 'Sprzedaż części samochodowych', ubezpieczenia: 'Ubezpieczenia', biuro: 'Biuro' };
+  function workerForm(w, reload) {
+    const v = w || { department_id: DEP };
+    modal(w ? 'Pracownik ' + w.name : 'Dodaj pracownika', `${field('w-n', 'Imię i nazwisko', `<input id="w-n" name="name" required maxlength="120" value="${esc(v.name || '')}">`)}
+      <div class="field-row">${field('w-d', 'Dział', `<select id="w-d" name="department_id">${Object.entries(WDEPT).map(([k, t]) => `<option value="${k}"${(v.department_id || DEP) === k ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}
+        ${field('w-s', 'Stanowisko', `<input id="w-s" name="position" maxlength="120" value="${esc(v.position || '')}" placeholder="np. Monter instalacji">`)}</div>
+      <div class="field-row">${field('w-p', 'Numer telefonu', `<input id="w-p" name="phone" type="tel" maxlength="50" value="${esc(v.phone || '')}">`)}
+        ${field('w-e', 'Adres e-mail', `<input id="w-e" name="email" type="email" maxlength="200" value="${esc(v.email || '')}">`)}</div>
+      ${w ? `<label class="toggle"><input type="checkbox" name="active"${w.is_active ? ' checked' : ''}> Pracownik aktywny</label>
+        <p class="muted small">${w.user_login ? 'Konto w aplikacji: ' + esc(w.user_login) + ' – powiadomienia o montażach i „Moje montaże”.' : 'Bez konta w aplikacji – konto i powiązanie z pracownikiem zakłada administrator w module „Konta i role”.'}</p>
+        <div class="ap-actions">${U().delBtn('d1/instalatorzy/' + w.id, 'Pracownik ' + w.name, 'Odznacz „Pracownik aktywny” – przydziały zostaną w historii.', 'Usuń pracownika')}</div>` : ''}`,
+    { submit: w ? 'Zapisz' : 'Dodaj pracownika', onSubmit: async f => {
+      const d = { name: val(f, 'name'), department_id: val(f, 'department_id'), position: val(f, 'position'), phone: val(f, 'phone'), email: val(f, 'email') };
+      if (w) await api('d1/instalatorzy/' + w.id, { ...d, is_active: f.elements.active.checked, updated_at: w.updated_at }, 'PATCH'); else await api('d1/instalatorzy', d);
+      toast(w ? 'Pracownik zapisany.' : 'Pracownik dodany.'); reload();
+    } });
+  }
   async function ekipy(body, reload, alive) {
-    const crews = await api('d1/ekipy');
+    const ws = await api('d1/pracownicy-dzialu');
     if (!alive()) return;
-    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="c-new">Nowa ekipa</button><button type="button" class="btn btn-secondary" id="in-new">Dodaj instalatora</button></div>
-      <div class="wf-grid">${crews.filter(c => !c.virtual || c.installers.length).map(c => `<section class="panel crew${c.is_active === false ? ' crew-off' : ''}">
-        <div class="panel-head"><h2 class="panel-title">${esc(c.name)}</h2>${c.virtual ? '' : chip(c.is_active ? 'aktywny' : 'wylaczony', c.is_active ? 'Aktywna' : 'Nieaktywna')}</div>
-        ${c.virtual ? '' : `<p class="small">${c.leader ? 'Brygadzista: <b>' + esc(c.leader) + '</b>' : 'Brak brygadzisty'}${c.phone ? ' · <span class="sel">' + esc(c.phone) + '</span>' : ''}</p><p class="muted small">Zaplanowane montaże: ${esc(c.upcoming)}</p>`}
-        <ul class="mem-list">${c.installers.map(i => `<li><button type="button" class="linkish" data-inst="${i.id}"><b>${esc(i.name)}</b></button>${i.phone ? ' · ' + esc(i.phone) : ''}${i.user_login ? ' ' + chip('ok', 'konto: ' + i.user_login) : ''}${i.qualifications ? `<div class="muted small">${esc(i.qualifications)}</div>` : ''}${i.is_active ? '' : ' ' + chip('off', 'nieaktywny')}</li>`).join('') || '<li class="muted small">Brak instalatorów.</li>'}</ul>
-        ${c.virtual ? '' : `<div class="ap-actions"><button type="button" class="btn btn-secondary btn-sm" data-cedit="${c.id}">Edytuj</button><button type="button" class="btn btn-ghost btn-sm" data-ct="${c.id}">${c.is_active ? 'Dezaktywuj' : 'Aktywuj'}</button>${U().delBtn('d1/ekipy/' + c.id, 'Ekipa ' + c.name, 'Dezaktywuj ekipę – jej montaże zostaną w historii.')}</div>`}</section>`).join('')}</div>
-      <p class="muted small">Kliknij nazwisko instalatora, aby edytować jego dane, ekipę lub go usunąć.</p>
-      ${crews.length <= 1 ? '<p class="empty-inline">Brak ekip. Dodaj pierwszą ekipę montażową.</p>' : ''}`;
-    body.querySelector('#c-new').addEventListener('click', () => modal('Nowa ekipa', field('c-n', 'Nazwa', '<input id="c-n" name="name" required maxlength="100">') + `<div class="field-row">${field('c-l', 'Brygadzista', '<input id="c-l" name="leader" maxlength="100">')}${field('c-p', 'Telefon', '<input id="c-p" name="phone" maxlength="50">')}</div>`,
-      { submit: 'Dodaj ekipę', onSubmit: async f => { await api('d1/ekipy', { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone') }); toast('Ekipa dodana.'); reload(); } }));
-    body.querySelector('#in-new').addEventListener('click', () => modal('Nowy instalator', `${field('n-n', 'Imię i nazwisko', '<input id="n-n" name="name" required maxlength="120">')}
-      <div class="field-row">${field('n-c', 'Ekipa', `<select id="n-c" name="crew_id">${opts(crews.filter(c => !c.virtual), null, c => c.name, c => c.id, '– bez ekipy –')}</select>`)}${field('n-p', 'Telefon', '<input id="n-p" name="phone" maxlength="50">')}</div>
-      ${field('n-q', 'Uprawnienia / kwalifikacje', '<input id="n-q" name="qualifications" maxlength="500" placeholder="np. SEP do 1 kV, praca na wysokości">')}`,
-      { submit: 'Dodaj', onSubmit: async f => { await api('d1/instalatorzy', { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications') }); toast('Instalator dodany.'); reload(); } }));
-    body.querySelectorAll('[data-ct]').forEach(b => b.addEventListener('click', async () => { const c = crews.find(x => x.id === b.dataset.ct); await api('d1/ekipy/' + c.id, { is_active: !c.is_active }, 'PATCH'); reload(); }));
-    body.querySelectorAll('[data-cedit]').forEach(b => b.addEventListener('click', () => {
-      const c = crews.find(x => x.id === b.dataset.cedit);
-      modal('Ekipa ' + c.name, field('ce-n', 'Nazwa', `<input id="ce-n" name="name" required maxlength="100" value="${esc(c.name)}">`) + `<div class="field-row">${field('ce-l', 'Brygadzista', `<input id="ce-l" name="leader" maxlength="100" value="${esc(c.leader || '')}">`)}${field('ce-p', 'Telefon', `<input id="ce-p" name="phone" maxlength="50" value="${esc(c.phone || '')}">`)}</div>
-        <div class="ap-actions">${U().delBtn('d1/ekipy/' + c.id, 'Ekipa ' + c.name, 'Dezaktywuj ekipę – jej montaże zostaną w historii.', 'Usuń ekipę')}</div>`,
-      { submit: 'Zapisz', onSubmit: async f => { await api('d1/ekipy/' + c.id, { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone'), updated_at: c.updated_at }, 'PATCH'); toast('Ekipa zapisana.'); reload(); } });
-    }));
-    const allInst = crews.flatMap(c => c.installers);
-    body.querySelectorAll('[data-inst]').forEach(b => b.addEventListener('click', () => {
-      const i = allInst.find(x => x.id === b.dataset.inst);
-      modal('Instalator ' + i.name, `${field('ie-n', 'Imię i nazwisko', `<input id="ie-n" name="name" required maxlength="120" value="${esc(i.name)}">`)}
-        <div class="field-row">${field('ie-c', 'Ekipa', `<select id="ie-c" name="crew_id">${opts(crews.filter(c => !c.virtual), i.crew_id, c => c.name, c => c.id, '– bez ekipy –')}</select>`)}${field('ie-p', 'Telefon', `<input id="ie-p" name="phone" maxlength="50" value="${esc(i.phone || '')}">`)}</div>
-        ${field('ie-q', 'Uprawnienia / kwalifikacje', `<input id="ie-q" name="qualifications" maxlength="500" value="${esc(i.qualifications || '')}">`)}
-        <label class="toggle"><input type="checkbox" name="active"${i.is_active ? ' checked' : ''}> Instalator aktywny</label>
-        ${i.user_login ? `<p class="muted small">Powiązane konto: ${esc(i.user_login)} (zmiana w Konta i role).</p>` : ''}
-        <div class="ap-actions">${U().delBtn('d1/instalatorzy/' + i.id, 'Instalator ' + i.name, 'Odznacz „Instalator aktywny”.', 'Usuń instalatora')}</div>`,
-      { submit: 'Zapisz', onSubmit: async f => { await api('d1/instalatorzy/' + i.id, { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications'), is_active: f.elements.active.checked, updated_at: i.updated_at }, 'PATCH'); toast('Instalator zapisany.'); reload(); } });
-    }));
+    body.innerHTML = `<div class="toolbar"><button type="button" class="btn btn-primary" id="w-new">${U().icon('plus')}Dodaj pracownika</button></div>
+      <section class="panel">${ws.length ? table(['Imię i nazwisko', 'Dział', 'Stanowisko', 'Telefon', 'E-mail', 'Montaże', ''], ws.map(w => `<tr${w.is_active ? '' : ' class="row-off"'}>
+        <td><button type="button" class="linkish" data-wk="${w.id}"><b>${esc(w.name)}</b></button>${w.is_active ? '' : ' ' + chip('off', 'nieaktywny')}${w.user_login ? `<div class="muted small">konto: ${esc(w.user_login)}</div>` : ''}</td>
+        <td>${esc(WDEPT[w.department_id] || w.department_id)}</td><td>${esc(w.position || '–')}</td>
+        <td>${w.phone ? `<a href="tel:${esc(w.phone.replace(/\s/g, ''))}">${esc(w.phone)}</a>` : '–'}</td><td>${w.email ? `<a href="mailto:${esc(w.email)}">${esc(w.email)}</a>` : '–'}</td>
+        <td class="num">${esc(w.upcoming)}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm" data-wk="${w.id}">Edytuj</button></td></tr>`))
+        : '<p class="empty-inline">Brak pracowników. Dodaj pierwszego pracownika – potem przydzielisz go do montażu w harmonogramie.</p>'}</section>
+      <p class="muted small">„Montaże” – liczba nadchodzących montaży, do których pracownik jest przydzielony. Kliknij nazwisko, aby edytować dane lub usunąć pracownika.</p>`;
+    body.querySelector('#w-new').addEventListener('click', () => workerForm(null, reload));
+    body.querySelectorAll('[data-wk]').forEach(b => b.addEventListener('click', () => workerForm(ws.find(x => x.id === b.dataset.wk), reload)));
   }
 
   // ---------- reklamacje ----------

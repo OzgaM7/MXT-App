@@ -61,16 +61,18 @@ const LISTS = {
   },
   async montaze(req) {
     const f = where(req, [['od', 'x.planned_date >= ?', v => V.date(v)], ['do', 'x.planned_date <= ?', v => V.date(v)], ['crew_id', 'x.crew_id = ?', v => V.uuid(v)],
-      ['status', 'x.status = ?', v => V.oneOf(v, Object.keys(INST_ST), 'Status')]]);
-    const q = await pool.query(`SELECT x.number, p.number AS project, b.name AS building, b.address, b.city, c.name AS customer, cr.name AS crew, x.planned_date, x.planned_end,
+      ['pracownik', 'EXISTS (SELECT 1 FROM installation_workers iw WHERE iw.installation_id = x.id AND iw.installer_id = ?)', v => V.uuid(v)], ['status', 'x.status = ?', v => V.oneOf(v, Object.keys(INST_ST), 'Status')]]);
+    const q = await pool.query(`SELECT x.number, p.number AS project, coalesce(nullif(x.site_name, ''), b.name) AS building, coalesce(nullif(replace(x.addresses, E'\n', '; '), ''), b.address) AS address,
+        CASE WHEN x.site_name <> '' OR x.addresses <> '' THEN '' ELSE b.city END AS city, x.buildings_count, coalesce(cx.name, c.name) AS customer,
+        coalesce((SELECT string_agg(i.name, ', ' ORDER BY i.name) FROM installation_workers w JOIN installers i ON i.id = w.installer_id WHERE w.installation_id = x.id), cr.name) AS crew, x.planned_date, x.planned_end,
         x.status, x.devices_planned, (SELECT count(*)::int FROM devices d WHERE d.installation_id = x.id) AS devices_installed, x.scope, x.accepted_by, x.accepted_at, x.notes,
         ${PROFIT('installation_id')}
-      FROM installations x JOIN buildings b ON b.id = x.building_id LEFT JOIN customers c ON c.id = b.customer_id LEFT JOIN crews cr ON cr.id = x.crew_id
+      FROM installations x LEFT JOIN buildings b ON b.id = x.building_id LEFT JOIN customers cx ON cx.id = x.customer_id LEFT JOIN customers c ON c.id = b.customer_id LEFT JOIN crews cr ON cr.id = x.crew_id
       LEFT JOIN projects p ON p.id = x.project_id ${f.w} ORDER BY x.planned_date, x.number LIMIT ${MAX}`, f.p);
     return [{ name: 'Montaże', rows: margin(q.rows).map(x => ({ ...x, status: INST_ST[x.status] })), columns: [
-      { header: 'Numer', key: 'number', width: 14 }, { header: 'Kontrakt', key: 'project', width: 14 }, { header: 'Budynek', key: 'building', width: 26 },
-      { header: 'Adres', key: 'address', width: 28 }, { header: 'Miasto', key: 'city', width: 14 }, { header: 'Klient', key: 'customer', width: 26 },
-      { header: 'Ekipa', key: 'crew', width: 16 }, { header: 'Termin od', key: 'planned_date', type: 'date', width: 12 }, { header: 'Termin do', key: 'planned_end', type: 'date', width: 12 },
+      { header: 'Numer', key: 'number', width: 14 }, { header: 'Kontrakt', key: 'project', width: 14 }, { header: 'Osiedle / budynek', key: 'building', width: 26 },
+      { header: 'Adresy', key: 'address', width: 36 }, { header: 'Miasto', key: 'city', width: 14 }, { header: 'Liczba budynków', key: 'buildings_count', type: 'int' }, { header: 'Firma zlecająca', key: 'customer', width: 26 },
+      { header: 'Pracownicy', key: 'crew', width: 24 }, { header: 'Termin od', key: 'planned_date', type: 'date', width: 12 }, { header: 'Termin do', key: 'planned_end', type: 'date', width: 12 },
       { header: 'Status', key: 'status', width: 12 }, { header: 'Urządzenia – plan', key: 'devices_planned', type: 'int' },
       { header: 'Urządzenia – zamontowane', key: 'devices_installed', type: 'int' }, { header: 'Zakres prac', key: 'scope', width: 40 },
       { header: 'Odebrał', key: 'accepted_by', width: 20 }, { header: 'Data odbioru', key: 'accepted_at', type: 'datetime', width: 16 }, ...MONEY,
@@ -97,7 +99,7 @@ const LISTS = {
   async rentownosc() {
     const [b, i, k] = await Promise.all([
       pool.query(`SELECT x.name, x.address, x.city, ${PROFIT('building_id')} FROM buildings x ORDER BY x.name LIMIT ${MAX}`),
-      pool.query(`SELECT x.number, b.name AS building, x.planned_date, x.status, ${PROFIT('installation_id')} FROM installations x JOIN buildings b ON b.id = x.building_id
+      pool.query(`SELECT x.number, coalesce(nullif(x.site_name, ''), b.name) AS building, x.planned_date, x.status, ${PROFIT('installation_id')} FROM installations x LEFT JOIN buildings b ON b.id = x.building_id
         ORDER BY x.planned_date DESC LIMIT ${MAX}`),
       pool.query(`SELECT x.number, x.title, x.status, x.value_net::float AS value_net, ${PROFIT('project_id')} FROM projects x WHERE x.department_id = $1 ORDER BY x.created_at DESC`, [DEP])
     ]);

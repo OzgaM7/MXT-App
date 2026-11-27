@@ -249,8 +249,8 @@ r.post('/projekty/:id/protokol-miesieczny', idParam, view, wrap(async (req, res)
     const p = (await c.query(`SELECT p.*, c.name AS customer_name, c.address AS customer_address FROM projects p LEFT JOIN customers c ON c.id = p.customer_id WHERE p.id = $1 FOR UPDATE OF p`, [req.params.id])).rows[0];
     if (!p) throw bad(404, 'Nie znaleziono projektu.');
     const range = [from, `(date '${from}' + interval '1 month')::date`];
-    const inst = (await c.query(`SELECT x.number, x.planned_date, coalesce(x.planned_end, x.planned_date) AS end_date, x.status, b.name, b.address,
-        (SELECT count(*)::int FROM devices d WHERE d.installation_id = x.id) AS devices FROM installations x JOIN buildings b ON b.id = x.building_id
+    const inst = (await c.query(`SELECT x.number, x.planned_date, coalesce(x.planned_end, x.planned_date) AS end_date, x.status, coalesce(nullif(x.site_name, ''), b.name) AS name, coalesce(nullif(replace(x.addresses, E'\n', '; '), ''), b.address) AS address,
+        (SELECT count(*)::int FROM devices d WHERE d.installation_id = x.id) AS devices FROM installations x LEFT JOIN buildings b ON b.id = x.building_id
       WHERE x.project_id = $1 AND x.status IN ('wykonany', 'odebrany') AND coalesce(x.accepted_at::date, x.planned_end, x.planned_date) >= $2::date
         AND coalesce(x.accepted_at::date, x.planned_end, x.planned_date) < ${range[1]} ORDER BY x.planned_date`, [p.id, from])).rows;
     const srv = (await c.query(`SELECT o.number, o.completed_at::date AS done, o.address, o.unit, o.description FROM service_orders o

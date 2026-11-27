@@ -258,6 +258,48 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     ok((await pool.query(`SELECT count(DISTINCT action)::int n FROM audit_logs WHERE action LIKE '%.usuniecie' AND actor_id = ANY($1::text[])`, [users.map(String)])).rows[0].n >= 12, 'usunięcia w dzienniku zdarzeń');
 
 
+    // ---------- N8: montaż na osiedlu (firma zlecająca, adresy, liczba budynków) i przydział pracowników (migracja 023) ----------
+    {
+      T.workers = [];
+      const MT = await mk('taud.monter', 'monter');
+      r = await call('d1/instalatorzy', { name: '[T-AUD] Pracownik zły e-mail', email: 'bez-malpy' }, UZ.c); eq(r.s, 400, 'pracownik: nieprawidłowy e-mail – 400');
+      r = await call('d1/instalatorzy', { name: '[T-AUD] Jan Monter', department_id: 'podzielniki-i-montaze', position: 'Monter instalacji', phone: '600 100 200', email: 'jan.monter@example.invalid' }, UZ.c);
+      eq(r.s, 201, 'pracownik dodany (imię i nazwisko, dział, stanowisko, telefon, e-mail)'); const W1 = r.j; T.workers.push(W1.id);
+      eq(W1.position, 'Monter instalacji', 'stanowisko zapisane'); eq(W1.email, 'jan.monter@example.invalid', 'e-mail zapisany');
+      await pool.query('UPDATE installers SET user_id = $2 WHERE id = $1', [W1.id, MT.id]);   // konto pracownika (jak w „Konta i role”)
+      const W2 = (await call('d1/instalatorzy', { name: '[T-AUD] Anna Pomocnik', position: 'Pomocnik' }, UZ.c)).j; T.workers.push(W2.id);
+      r = await call('d1/pracownicy-dzialu', null, UZ.c); ok(r.s === 200 && r.j.some(w => w.id === W1.id && w.user_login === 'taud.monter' && w.department_id === 'podzielniki-i-montaze'), 'lista pracowników z kontem i działem');
+      eq((await call('d1/montaze', { site_name: '[T-AUD] Osiedle', planned_date: inDays(9) }, UZ.c)).s, 400, 'montaż bez firmy zlecającej – 400');
+      eq((await call('d1/montaze', { customer_id: PCUST.id, planned_date: inDays(9) }, UZ.c)).s, 400, 'montaż bez nazwy osiedla – 400');
+      const site = { customer_id: PCUST.id, site_name: '[T-AUD] Osiedle Słoneczne', addresses: 'Słoneczna 1-15\n\n  Leśna 2, 4  \n', buildings_count: 12, planned_date: inDays(9), planned_end: inDays(11), devices_planned: 400 };
+      r = await call('d1/montaze', { ...site, worker_ids: [W1.id] }, UZ.c); eq(r.s, 201, 'montaż na osiedlu z przydziałem pracownika'); const MO = r.j; T.installations.push(MO.id);
+      ok(MO.building_id === null && MO.buildings_count === 12 && MO.addresses === 'Słoneczna 1-15\nLeśna 2, 4', 'montaż bez budynku z ewidencji: liczba budynków, adresy (puste linie usunięte)');
+      r = await call('d1/montaze/' + MO.id, null, UZ.c);
+      ok(r.s === 200 && r.j.building_name === site.site_name && r.j.address === 'Słoneczna 1-15; Leśna 2, 4' && r.j.customer_name === PCUST.name, 'karta montażu: osiedle, adresy, firma zlecająca');
+      ok(r.j.workers.length === 1 && r.j.workers[0].id === W1.id, 'karta montażu: przydzieleni pracownicy');
+      ok((await pool.query(`SELECT count(*)::int n FROM notifications WHERE user_id = $1 AND kind = 'montaz.przydzial' AND related_id = $2`, [MT.id, MO.id])).rows[0].n === 1, 'pracownik z kontem dostał powiadomienie o przydziale');
+      r = await call('moje/montaze', null, MT.c); ok(r.s === 200 && r.j.some(x => x.id === MO.id && x.building_name === site.site_name), '„Moje montaże”: montaż przydzielony pracownikowi');
+      r = await call('moje/montaze/' + MO.id, null, MT.c); ok(r.s === 200 && r.j.buildings_count === 12 && r.j.team.some(t => t.name === W1.name), '„Moje montaże”: karta z liczbą budynków i składem');
+      r = await call('d1/montaze', { ...site, site_name: '[T-AUD] Osiedle 2', worker_ids: [W1.id] }, UZ.c); ok(r.s === 409 && /nakładanie/.test(r.j.error) && r.j.error.includes(W1.name), 'kolizja terminu pracownika – 409');
+      r = await call('d1/montaze', { ...site, site_name: '[T-AUD] Osiedle 2', worker_ids: [W1.id], allow_clash: true }, UZ.c); eq(r.s, 201, 'nakładanie potwierdzone'); T.installations.push(r.j.id);
+      const seen = (await call('d1/montaze/' + MO.id, null, UZ.c)).j.updated_at;
+      r = await call('d1/montaze/' + MO.id, { worker_ids: [W2.id], updated_at: seen }, UZ.c, 'PATCH'); eq(r.s, 200, 'zmiana przydziału pracowników');
+      ok((await pool.query(`SELECT count(*)::int n FROM notifications WHERE user_id = $1 AND kind = 'montaz.odwolanie' AND related_id = $2`, [MT.id, MO.id])).rows[0].n === 1, 'odwołany pracownik dostał powiadomienie');
+      eq((await call('moje/montaze/' + MO.id, null, MT.c)).s, 404, 'po odwołaniu pracownik nie widzi montażu');
+      eq((await call('d1/montaze/' + MO.id, { worker_ids: [W1.id], updated_at: seen }, UZ.c, 'PATCH')).s, 409, 'przydział ze starej wersji formularza – 409');
+      r = await call('d1/montaze?pracownik=' + W2.id, null, UZ.c); ok(r.s === 200 && r.j.some(x => x.id === MO.id) && r.j.every(x => x.workers.some(w => w.id === W2.id)), 'harmonogram: filtr pracownika');
+      const wo = (await pool.query(`SELECT * FROM work_orders WHERE id = $1`, [MO.id])).rows[0];
+      ok(wo && wo.object_name === site.site_name && wo.assignee_name === W2.name && wo.status === 'zaplanowane' && wo.customer_id === PCUST.id, 'rejestr zleceń: osiedle, wykonawca, firma zlecająca');
+      r = await call('d1/montaze', { ...site, site_name: '[T-AUD] Osiedle bez ludzi', planned_date: inDays(20), planned_end: null }, UZ.c); T.installations.push(r.j.id);
+      eq((await pool.query(`SELECT status FROM work_orders WHERE id = $1`, [r.j.id])).rows[0].status, 'do_przydzielenia', 'montaż bez pracowników – do przydzielenia');
+      eq((await raw('eksport/d1/montaze?pracownik=' + W2.id, { headers: { Cookie: UZ.c } })).status, 200, 'eksport montaży pracownika');
+      r = await call('szukaj?q=' + encodeURIComponent('Osiedle Słoneczne'), null, UZ.c); ok(r.s === 200, 'wyszukiwarka działa z montażami bez budynku');
+      r = await call('d1/instalatorzy/' + W2.id, null, UZ.c, 'DELETE'); ok(r.s === 409 && /przydziały/.test(r.j.error), 'pracownik z przydziałem – 409 (zostaje w historii)');
+      r = await call('d1/montaze/' + MO.id, { status: 'anulowany', updated_at: (await call('d1/montaze/' + MO.id, null, UZ.c)).j.updated_at }, UZ.c, 'PATCH'); eq(r.s, 200, 'anulowanie montażu na osiedlu');
+      const legacy = (await call('d1/montaze', { building_id: B2.id, planned_date: inDays(30) }, UZ.c)); eq(legacy.s, 201, 'montaż z budynkiem z ewidencji (import, starsze wpisy) nadal działa'); T.installations.push(legacy.j.id);
+      eq((await call('d1/montaze/' + legacy.j.id, null, UZ.c)).j.building_name, B2.name, 'starszy montaż: nazwa z budynku');
+    }
+
     // ---------- N5: błędy klienta 400/413 zamiast 500, HSTS, dokumenty polis, konflikty równoczesnej edycji ----------
     const post = (p, body, cookie) => raw(p, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body });
     eq((await post('klienci', '{"name": "x",', UZ.c)).status, 400, 'uszkodzony JSON – 400');
@@ -350,7 +392,7 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     await q('DELETE FROM devices WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM installations WHERE id = ANY($1::uuid[]) OR building_id = ANY($2::uuid[])', [T.installations, T.buildings]);
     await q('DELETE FROM projects WHERE id = ANY($1::uuid[])', [T.projects || []]);
-    await q('DELETE FROM installers WHERE crew_id = ANY($1::uuid[])', [T.crews]);
+    await q('DELETE FROM installers WHERE crew_id = ANY($1::uuid[]) OR id = ANY($2::uuid[])', [T.crews, T.workers || []]);
     await q('DELETE FROM crews WHERE id = ANY($1::uuid[])', [T.crews]);
     await q('DELETE FROM units WHERE building_id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM buildings WHERE id = ANY($1::uuid[])', [T.buildings]);

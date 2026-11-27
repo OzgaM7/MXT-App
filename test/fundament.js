@@ -181,7 +181,7 @@ const day = n => require('./_setup').warsawDay(n);   // jak aplikacja: data wg c
     eq((await wbOf(r)).getWorksheet('Urządzenia').getRow(2).getCell(1).value, 'Brak danych dla wybranych filtrów.', 'filtry działają');
     r = await call('eksport/d1/montaze?od=' + day(0), null, A); ws = (await wbOf(r)).getWorksheet('Montaże');
     const row = ws.getRows(2, ws.rowCount - 1).find(x => x.getCell(1).value === iB.number);
-    ok(row && row.getCell(8).value instanceof Date && row.getCell(7).value === T + ' Ekipa B', 'montaże: daty jako daty Excela');
+    ok(row && row.getCell(9).value instanceof Date && row.getCell(8).value === T + ' Ekipa B', 'montaże: daty jako daty Excela');
     for (const l of ['budynki', 'kontrakty']) eq((await call('eksport/d1/' + l, null, U)).s, 200, `eksport ${l} (pracownik biura)`);
     for (const l of ['rentownosc', 'finanse']) eq((await call('eksport/d1/' + l, null, U)).s, 403, `eksport ${l} – tylko role finansowe (pracownik biura 403)`);
     eq((await wbOf(await call('eksport/d1/rentownosc', null, A))).worksheets.length, 3, 'rentowność: 3 arkusze');

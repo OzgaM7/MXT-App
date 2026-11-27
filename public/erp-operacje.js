@@ -94,7 +94,7 @@
     const overdue = d.rows.filter(x => x.overdue).length;
     const finance = has('finance.view');
     // „Dodaj zlecenie”: jeden przycisk dla montażu, serwisu i odczytu (tylko typy, do których konto ma uprawnienia).
-    const addTypes = [['montaz', 'Montaż', 'Nowy montaż w harmonogramie: budynek, ekipa, termin, zakres i materiały.', 'tasks.use'],
+    const addTypes = [['montaz', 'Montaż', 'Nowy montaż w harmonogramie: firma zlecająca, osiedle, liczba budynków, termin i pracownicy.', 'tasks.use'],
       ['serwis', 'Serwis', 'Zlecenie serwisowe: klient, adres, opis usterki, priorytet, serwisant (termin przydziału 14 dni).', 'service.manage'],
       ['odczyt', 'Odczyt', 'Obiekt do odczytów: budynek, zakres, metoda, cykl i termin pierwszego odczytu, osoba odpowiedzialna.', 'readings.manage']].filter(t => has(t[3]));
     body.innerHTML = `<p data-ws-sub>${d.rows.length} ${d.rows.length === 1 ? 'zlecenie' : 'zleceń'} w widoku${overdue ? ` · ${overdue} po terminie` : ''} · montaże, serwisy i odczyty w jednym rejestrze</p>
@@ -106,13 +106,13 @@
         ${sel('zf-r', 'rozliczenie', 'Rozliczenie', [['', 'Rozliczone i nie'], ['do_rozliczenia', 'Do rozliczenia'], ['rozliczone', 'Rozliczone']])}
         <label class="visually-hidden" for="zf-q">Szukaj</label><input id="zf-q" name="q" class="select-sm" placeholder="Numer, obiekt, adres" value="${esc(zst.q)}">
         <button type="submit" class="btn btn-secondary btn-sm">Szukaj</button><div class="zl-sv"></div></form>
-      <section class="panel">${ctable(['Typ', 'Numer', 'Obiekt', 'Status', 'Termin', 'Osoba / ekipa', 'Projekt', 'Rozliczenie', ''], d.rows.map(x => `<tr class="${x.overdue ? 'row-deny' : ''}">
+      <section class="panel">${ctable(['Typ', 'Numer', 'Obiekt', 'Status', 'Termin', 'Wykonawca', 'Projekt', 'Rozliczenie', ''], d.rows.map(x => `<tr class="${x.overdue ? 'row-deny' : ''}">
         ${td('Typ', chip(TYPE_CLS[x.type], TYPES[x.type]))}
         ${td('Numer', `<button type="button" class="linkish" data-open="${esc(x.id)}">${esc(x.number)}</button>`)}
         ${td('Obiekt', `${esc(x.object_name || '–')}<div class="muted small">${esc(x.address || '')}</div>`)}
         ${td('Status', chip(ST_CLS[x.status], ST[x.status] || x.status))}
         ${td('Termin', `${esc(fd(x.due_date))}${x.overdue ? ' <b class="txt-danger small">po terminie</b>' : ''}`, 'nowrap')}
-        ${td('Osoba / ekipa', x.assignee_name ? esc(x.assignee_name) : '<span class="txt-warn">nieprzydzielone</span>')}
+        ${td('Wykonawca', x.assignee_name ? esc(x.assignee_name) : '<span class="txt-warn">nieprzydzielone</span>')}
         ${td('Projekt', x.project_number ? `<button type="button" class="linkish" data-proj="${esc(x.project_id)}">${esc(x.project_number)}</button>` : '–')}
         ${td('Rozliczenie', x.settled_at ? (x.invoice_no ? 'FV ' + esc(x.invoice_no) : 'bez opłaty') : x.status === 'wykonane' ? '<span class="txt-warn">do rozliczenia</span>' : '–')}
         ${td('', `${finance && x.status === 'wykonane' ? `<button type="button" class="btn btn-primary btn-sm" data-settle="${esc(x.id)}">Rozlicz</button>` : ''}

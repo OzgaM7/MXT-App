@@ -172,25 +172,50 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger'); await p.waitForSelector('#modal', { state: 'hidden' });
     ok(!(await pool.query('SELECT 1 FROM installations WHERE id = $1', [MON2.id])).rows.length, 'okno edycji montażu: „Usuń montaż”');
 
-    // ---------- Ekipy: edycja instalatora i wspólny przycisk „Usuń” (sprawdzenie historii, potwierdzenie, odświeżenie) ----------
-    const CRW = await call('d1/ekipy', { name: '[T-UI] Ekipa ' + tag }, AC); T.crews.push(CRW.id);
-    const INS = await call('d1/instalatorzy', { name: '[T-UI] Instalator ' + tag, crew_id: CRW.id }, AC);
-    await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=ekipy'); await p.waitForSelector(`[data-inst="${INS.id}"]`);
-    await p.click(`[data-inst="${INS.id}"]`); await p.waitForSelector('#ie-n'); await p.fill('#ie-n', '[T-UI] Instalator zmieniony ' + tag);
-    await p.click('#modal-box [type=submit]'); await p.waitForSelector(`text=Instalator zmieniony ${tag}`);
-    ok(true, 'ekipy: edycja instalatora z listy');
-    await p.click(`[data-inst="${INS.id}"]`); await p.waitForSelector(`#modal-box [data-usun="d1/instalatorzy/${INS.id}"]`);
-    await p.click(`#modal-box [data-usun="d1/instalatorzy/${INS.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger');
-    await p.waitForSelector(`[data-inst="${INS.id}"]`, { state: 'detached' });
-    await p.click(`.wf-grid [data-usun="d1/ekipy/${CRW.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger');
-    await p.waitForSelector(`[data-usun="d1/ekipy/${CRW.id}"]`, { state: 'detached' });
-    ok(!(await pool.query('SELECT 1 FROM crews WHERE id = $1', [CRW.id])).rows.length, 'ekipy: usunięcie instalatora i pustej ekipy przyciskiem „Usuń”');
+    // ---------- Ewidencja → Pracownicy: dodanie (imię i nazwisko, dział, stanowisko, telefon, e-mail), edycja, usunięcie ----------
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=ekipy'); await p.waitForSelector('#w-new');
+    ok((await p.textContent('.ws-title, h1').catch(() => '')).includes('Pracownicy') || (await p.$('text=Dodaj pracownika')) !== null, 'zakładka „Pracownicy” zamiast „Ekipy i instalatorzy”');
+    ok(!(await p.$('#c-new')) && !(await p.$('#in-new')), 'Pracownicy: bez „Nowa ekipa” i „Dodaj instalatora”');
+    await p.click('#w-new'); await p.waitForSelector('#w-n');
+    ok((await p.$$eval('#modal-box input, #modal-box select', x => x.map(y => y.name).join(','))) === 'name,department_id,position,phone,email', 'formularz pracownika: imię i nazwisko, dział, stanowisko, telefon, e-mail');
+    await p.fill('#w-n', '[T-UI] Pracownik ' + tag); await p.fill('#w-s', 'Monter instalacji'); await p.fill('#w-p', '600 111 222'); await p.fill('#w-e', 'pracownik' + tag + '@example.invalid');
+    await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' }); await p.waitForSelector(`text=[T-UI] Pracownik ${tag}`);
+    const WK = (await pool.query('SELECT * FROM installers WHERE name = $1', ['[T-UI] Pracownik ' + tag])).rows[0];
+    ok(WK && WK.position === 'Monter instalacji' && WK.email === 'pracownik' + tag + '@example.invalid' && WK.department_id === 'podzielniki-i-montaze', 'pracownik zapisany z działem, stanowiskiem i e-mailem');
+    await p.click(`[data-wk="${WK.id}"].linkish`); await p.waitForSelector('#w-s'); await p.fill('#w-s', 'Brygadzista');
+    await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' }); await p.waitForSelector('td:has-text("Brygadzista")');
+    ok(true, 'Pracownicy: edycja z listy');
+    const WK2 = await call('d1/instalatorzy', { name: '[T-UI] Do usunięcia ' + tag }, AC);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=ekipy'); await p.waitForSelector(`[data-wk="${WK2.id}"].linkish`);
+    await p.click(`[data-wk="${WK2.id}"].linkish`); await p.waitForSelector(`#modal-box [data-usun="d1/instalatorzy/${WK2.id}"]`);
+    await p.click(`#modal-box [data-usun="d1/instalatorzy/${WK2.id}"]`); await p.waitForSelector('#modal-box .btn-danger'); await p.click('#modal-box .btn-danger');
+    await p.waitForSelector(`[data-wk="${WK2.id}"]`, { state: 'detached' });
+    ok(!(await pool.query('SELECT 1 FROM installers WHERE id = $1', [WK2.id])).rows.length, 'Pracownicy: usunięcie pracownika bez historii');
+
+    // ---------- Dodaj montaż: firma zlecająca, osiedle, adresy, liczba budynków, pracownicy (bez kontraktu, ekipy i budynku) ----------
+    const FZ = await call('klienci', { kind: 'firma', name: '[T-UI] Spółdzielnia ' + tag }, AC); T.customers.push(FZ.id);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze'); await p.waitForSelector('#i-new', { state: 'attached' });
+    await p.evaluate(() => document.querySelector('#i-new').click()); await p.waitForSelector('#i-cust');
+    ok(!(await p.$('#modal-box [name=project_id]')) && !(await p.$('#modal-box [name=crew_id]')) && !(await p.$('#modal-box [name=building_id]')), 'formularz montażu bez kontraktu, ekipy i budynku');
+    await p.selectOption('#i-cust', FZ.id); await p.fill('#i-site', '[T-UI] Osiedle ' + tag); await p.fill('#i-addr', 'Słoneczna 1\nSłoneczna 3\nLeśna 7');
+    await p.fill('#i-bc', '14'); await p.fill('#i-d', require('./_setup').warsawDay(4)); await p.check(`#modal-box [name=worker][value="${WK.id}"]`);
+    await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' }); await p.waitForSelector(`text=[T-UI] Osiedle ${tag}`);
+    const MOS = (await pool.query('SELECT x.*, (SELECT array_agg(installer_id) FROM installation_workers w WHERE w.installation_id = x.id) AS ws FROM installations x WHERE site_name = $1', ['[T-UI] Osiedle ' + tag])).rows[0];
+    ok(MOS && MOS.customer_id === FZ.id && MOS.buildings_count === 14 && MOS.addresses.split('\n').length === 3 && MOS.building_id === null && MOS.ws && MOS.ws[0] === WK.id, 'montaż zapisany: firma, osiedle, 3 adresy, 14 budynków, pracownik');
+    ok(await p.$(`.hm-row:has-text("[T-UI] Osiedle ${tag}") .wk-chips`) !== null, 'harmonogram: pracownik przy montażu');
+    // „Przydziel pracowników” w wierszu montażu bez przydziału
+    const MNP = await call('d1/montaze', { customer_id: FZ.id, site_name: '[T-UI] Osiedle bez ludzi ' + tag, planned_date: require('./_setup').warsawDay(6) }, AC);
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze'); await p.waitForSelector(`button.hm-assign[data-iw="${MNP.id}"]`);
+    await p.click(`button.hm-assign[data-iw="${MNP.id}"]`); await p.waitForSelector(`#modal-box [name=worker][value="${WK.id}"]`);
+    await p.check(`#modal-box [name=worker][value="${WK.id}"]`); await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`button.hm-assign[data-iw="${MNP.id}"]`, { state: 'detached' });
+    ok((await pool.query('SELECT 1 FROM installation_workers WHERE installation_id = $1 AND installer_id = $2', [MNP.id, WK.id])).rows.length === 1, 'harmonogram: „Przydziel pracowników” zapisuje przydział');
 
     // ---------- Wszystkie zlecenia: „Dodaj zlecenie” – montaż, serwis albo odczyt z jednego miejsca ----------
     await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=zlecenia'); await p.waitForSelector('#zl-new');
     await p.click('#zl-new'); await p.waitForSelector('[data-new="serwis"]');
     ok((await p.$$eval('[data-new]', x => x.map(y => y.dataset.new).join(','))) === 'montaz,serwis,odczyt', 'Dodaj zlecenie: wybór montaż / serwis / odczyt');
-    await p.click('[data-new="montaz"]'); await p.waitForSelector('#i-b'); ok(true, 'Dodaj zlecenie → formularz montażu');
+    await p.click('[data-new="montaz"]'); await p.waitForSelector('#i-cust'); ok(true, 'Dodaj zlecenie → formularz montażu (firma zlecająca)');
     await p.keyboard.press('Escape'); await p.click('#zl-new'); await p.click('[data-new="odczyt"]'); await p.waitForSelector('#modal-box #o-b'); ok(true, 'Dodaj zlecenie → formularz obiektu odczytów');
     await p.keyboard.press('Escape'); await p.click('#zl-new'); await p.click('[data-new="serwis"]'); await p.waitForSelector('#o-cl');
     await p.fill('#o-cl', '[T-UI] Klient serwisu ' + tag); await p.fill('#o-a', 'ul. Serwisowa ' + tag); await p.fill('#o-d', '[T-UI] Wymiana podzielnika ' + tag);
@@ -255,10 +280,10 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await q(`DELETE FROM stock_levels WHERE item_id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM stock_items WHERE id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM suppliers WHERE id = ANY($1::uuid[])`, [T.suppliers]);
-    await q(`DELETE FROM installations WHERE building_id = ANY($1::uuid[])`, [T.buildings]);
+    await q(`DELETE FROM installations WHERE building_id = ANY($1::uuid[]) OR created_by = ANY($2::uuid[])`, [T.buildings, users]);
     await q(`DELETE FROM service_events WHERE order_id IN (SELECT id FROM service_orders WHERE created_by = ANY($1::uuid[]))`, [users]);
     await q(`DELETE FROM service_orders WHERE created_by = ANY($1::uuid[])`, [users]);
-    await q(`DELETE FROM installers WHERE crew_id = ANY($1::uuid[])`, [T.crews]);
+    await q(`DELETE FROM installers WHERE crew_id = ANY($1::uuid[]) OR (name LIKE '[T-UI]%' AND name LIKE '%' || $2)`, [T.crews, tag]);
     await q(`DELETE FROM crews WHERE id = ANY($1::uuid[])`, [T.crews]);
     await q(`DELETE FROM buildings WHERE id = ANY($1::uuid[])`, [T.buildings]);
     await q(`DELETE FROM customers WHERE id = ANY($1::uuid[])`, [T.customers]);

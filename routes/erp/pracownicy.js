@@ -19,7 +19,7 @@ r.get('/pracownicy', mgr, wrap(async (req, res) => {
   const q = await pool.query(`SELECT u.id, u.updated_at, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.position, u.hourly_rate::float AS hourly_rate, u.employment, u.hired_at, u.hr_notes,
       (SELECT count(*)::int FROM service_orders o WHERE o.assigned_to = u.id AND o.status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta')) AS serwisy_otwarte,
       (SELECT count(*)::int FROM reading_schedules s WHERE s.assigned_to = u.id AND s.is_active AND s.next_due <= ${TODAY} + 30) AS odczyty_30d,
-      (SELECT count(*)::int FROM installations x JOIN installers i ON i.crew_id = x.crew_id WHERE i.user_id = u.id AND x.status IN ('zaplanowany','w_toku') AND x.planned_date <= ${TODAY} + 14) AS montaze_14d,
+      (SELECT count(DISTINCT x.id)::int FROM installations x JOIN installers i ON i.user_id = u.id WHERE (i.crew_id = x.crew_id OR EXISTS (SELECT 1 FROM installation_workers w WHERE w.installation_id = x.id AND w.installer_id = i.id)) AND x.status IN ('zaplanowany','w_toku') AND x.planned_date <= ${TODAY} + 14) AS montaze_14d,
       (SELECT coalesce(sum(t.hours), 0)::float FROM time_entries t WHERE t.user_id = u.id AND t.work_date >= $1) AS godziny,
       (SELECT json_build_object('kind', a.kind, 'date_to', a.date_to) FROM absences a WHERE a.user_id = u.id AND ${TODAY} BETWEEN a.date_from AND a.date_to LIMIT 1) AS nieobecnosc
     FROM users u ORDER BY u.is_active DESC, coalesce(nullif(u.full_name, ''), u.login)`, [from]);

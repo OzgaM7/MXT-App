@@ -15,7 +15,7 @@
     ksiegowosc: 'finanse firmy, należności i zobowiązania, raporty i eksport (bez zarządzania zleceniami)',
     magazynier: 'magazyn: przyjęcia, wydania, przesunięcia, inwentaryzacja, zamówienia zakupu',
     ograniczony: 'tylko powiadomienia i własne sprawy – bez dostępu do działów i danych firmy',
-    monter: 'tylko „Moje montaże” własnej ekipy, bez finansów',
+    monter: 'tylko „Moje montaże” (przydzielone montaże), bez finansów',
     serwisant: 'tylko „Moje serwisy” – zlecenia przypisane do niego: status, zdjęcia, protokół z podpisem',
     odczyty: 'tylko „Odczyty” – obiekty, klienci, terminy i wykonanie odczytów, bez finansów'
   };
@@ -68,9 +68,9 @@
         ${field('a-phone', 'Telefon (opcjonalnie)', `<input id="a-phone" name="phone" type="tel" maxlength="40" value="${esc(d.phone || '')}">`)}</div>
       ${field('a-role', 'Rola główna', `<select id="a-role" name="role"${self ? ' disabled' : ''}>${Object.entries(M.roles).map(([k, v]) => `<option value="${k}"${d.role === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`)}
       <fieldset class="checks"><legend>Role dodatkowe</legend>${extras.map(r => `<label class="toggle"><input type="checkbox" name="extra" value="${r}"${(d.extra_roles || []).includes(r) ? ' checked' : ''}> ${esc(M.roles[r])}</label>`).join('')}</fieldset>
-      ${field('a-inst', 'Powiązany instalator (monter widzi montaże jego ekipy)', `<select id="a-inst" name="installer_id"><option value="">– brak –</option>${free.map(i =>
+      ${field('a-inst', 'Powiązany pracownik (widzi montaże, do których jest przydzielony)', `<select id="a-inst" name="installer_id"><option value="">– brak –</option>${free.map(i =>
         `<option value="${i.id}"${a && i.user_id === a.id ? ' selected' : ''}>${esc(i.name)}${i.crew_name ? ' – ' + esc(i.crew_name) : ' – bez ekipy'}</option>`).join('')}</select>`)}
-      ${free.length ? '' : '<p class="muted small">Brak wolnych instalatorów. Dodaj instalatora w dziale Podzielniki i Montaże → Ekipy i instalatorzy.</p>'}
+      ${free.length ? '' : '<p class="muted small">Brak wolnych pracowników. Dodaj pracownika w dziale Podzielniki i Montaże → Ewidencja → Pracownicy.</p>'}
       ${!isNew && !self ? `<label class="toggle"><input type="checkbox" name="is_active"${d.is_active ? ' checked' : ''}> Konto aktywne (wyłączone konto nie może się zalogować, dane zostają)</label>
         <p class="muted small">Konto założone przez pomyłkę (bez żadnej historii) można usunąć: <button type="button" class="btn btn-ghost btn-sm" id="a-del">Usuń konto</button></p>` : ''}`,
     { submit: isNew ? 'Utwórz konto' : 'Zapisz', onSubmit: async f => {
