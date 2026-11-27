@@ -186,6 +186,18 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await p.waitForSelector(`[data-usun="d1/ekipy/${CRW.id}"]`, { state: 'detached' });
     ok(!(await pool.query('SELECT 1 FROM crews WHERE id = $1', [CRW.id])).rows.length, 'ekipy: usunięcie instalatora i pustej ekipy przyciskiem „Usuń”');
 
+    // ---------- Wszystkie zlecenia: „Dodaj zlecenie” – montaż, serwis albo odczyt z jednego miejsca ----------
+    await p.goto(BASE + '/dzial/podzielniki-i-montaze?tab=zlecenia'); await p.waitForSelector('#zl-new');
+    await p.click('#zl-new'); await p.waitForSelector('[data-new="serwis"]');
+    ok((await p.$$eval('[data-new]', x => x.map(y => y.dataset.new).join(','))) === 'montaz,serwis,odczyt', 'Dodaj zlecenie: wybór montaż / serwis / odczyt');
+    await p.click('[data-new="montaz"]'); await p.waitForSelector('#i-b'); ok(true, 'Dodaj zlecenie → formularz montażu');
+    await p.keyboard.press('Escape'); await p.click('#zl-new'); await p.click('[data-new="odczyt"]'); await p.waitForSelector('#modal-box #o-b'); ok(true, 'Dodaj zlecenie → formularz obiektu odczytów');
+    await p.keyboard.press('Escape'); await p.click('#zl-new'); await p.click('[data-new="serwis"]'); await p.waitForSelector('#o-cl');
+    await p.fill('#o-cl', '[T-UI] Klient serwisu ' + tag); await p.fill('#o-a', 'ul. Serwisowa ' + tag); await p.fill('#o-d', '[T-UI] Wymiana podzielnika ' + tag);
+    await p.click('#modal-box [type=submit]'); await p.waitForSelector('#modal', { state: 'hidden' });
+    await p.waitForSelector(`text=ul. Serwisowa ${tag}`);
+    ok(true, 'Dodaj zlecenie → serwis zapisany i widoczny w rejestrze');
+
     // ---------- wszystkie zakładki modułów ERP: bez błędów JS i 5xx ----------
     const pages = ['/dzial/podzielniki-i-montaze', '/dzial/sprzedaz-czesci-i-eksport', '/dzial/ubezpieczenia', '/magazyn', '/finanse-firmy', '/pracownicy', '/moj-czas', '/szkolenia', '/pulpit-wlasciciela', '/crm', '/konta'];
     let tabs = 0;
@@ -244,6 +256,8 @@ const ok = (c, m) => { if (c) passed++; else fails.push(m); };
     await q(`DELETE FROM stock_items WHERE id = ANY($1::uuid[])`, [T.items]);
     await q(`DELETE FROM suppliers WHERE id = ANY($1::uuid[])`, [T.suppliers]);
     await q(`DELETE FROM installations WHERE building_id = ANY($1::uuid[])`, [T.buildings]);
+    await q(`DELETE FROM service_events WHERE order_id IN (SELECT id FROM service_orders WHERE created_by = ANY($1::uuid[]))`, [users]);
+    await q(`DELETE FROM service_orders WHERE created_by = ANY($1::uuid[])`, [users]);
     await q(`DELETE FROM installers WHERE crew_id = ANY($1::uuid[])`, [T.crews]);
     await q(`DELETE FROM crews WHERE id = ANY($1::uuid[])`, [T.crews]);
     await q(`DELETE FROM buildings WHERE id = ANY($1::uuid[])`, [T.buildings]);

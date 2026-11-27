@@ -93,7 +93,12 @@
     const sel = (id, k, label, o) => `<label class="visually-hidden" for="${id}">${label}</label><select id="${id}" class="select-sm" data-f="${k}">${o.map(([v, t]) => `<option value="${v}"${zst[k] === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
     const overdue = d.rows.filter(x => x.overdue).length;
     const finance = has('finance.view');
+    // „Dodaj zlecenie”: jeden przycisk dla montażu, serwisu i odczytu (tylko typy, do których konto ma uprawnienia).
+    const addTypes = [['montaz', 'Montaż', 'Nowy montaż w harmonogramie: budynek, ekipa, termin, zakres i materiały.', 'tasks.use'],
+      ['serwis', 'Serwis', 'Zlecenie serwisowe: klient, adres, opis usterki, priorytet, serwisant (termin przydziału 14 dni).', 'service.manage'],
+      ['odczyt', 'Odczyt', 'Obiekt do odczytów: budynek, zakres, metoda, cykl i termin pierwszego odczytu, osoba odpowiedzialna.', 'readings.manage']].filter(t => has(t[3]));
     body.innerHTML = `<p data-ws-sub>${d.rows.length} ${d.rows.length === 1 ? 'zlecenie' : 'zleceń'} w widoku${overdue ? ` · ${overdue} po terminie` : ''} · montaże, serwisy i odczyty w jednym rejestrze</p>
+      ${addTypes.length ? '<div data-ws-actions hidden><button type="button" class="btn btn-primary" id="zl-new">Dodaj zlecenie</button></div>' : ''}
       <form class="toolbar zl-bar" id="zl-f">
         ${sel('zf-t', 'typ', 'Typ', [['', 'Wszystkie typy'], ...Object.entries(TYPES)])}
         ${sel('zf-s', 'status', 'Status', [['otwarte', 'Otwarte'], ['', 'Wszystkie statusy'], ...Object.entries(ST)])}
@@ -124,6 +129,15 @@
     body.querySelectorAll('[data-close-o]').forEach(b => b.addEventListener('click', () => modal('Zamknąć zlecenie?', `<p>Zlecenie ${esc(byId(b.dataset.closeO).number)} zostanie zamknięte (koniec procesu, bez dalszej edycji).</p>`,
       { submit: 'Zamknij zlecenie', onSubmit: async () => { await api('d1/zlecenia/zamknij', { id: b.dataset.closeO }); toast('Zlecenie zamknięte.'); reload(); } })));
     body.querySelectorAll('[data-assign-p]').forEach(b => b.addEventListener('click', () => assignProject(byId(b.dataset.assignP), reload)));
+    const zn = body.querySelector('#zl-new');
+    if (zn) zn.addEventListener('click', () => {
+      const box = modal('Dodaj zlecenie', `<p class="muted">Wybierz rodzaj zlecenia – otworzy się jego formularz. Nowe zlecenie pojawi się w tym rejestrze.</p>
+        <div class="zl-types">${addTypes.map(([k, t, d]) => `<button type="button" class="zl-type" data-new="${k}"><b>${t}</b><span>${esc(d)}</span></button>`).join('')}</div>`, {});
+      box.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => {
+        const open = { montaz: () => window.MXT_D1.installationForm(null, reload), serwis: () => window.MXT_SERWIS.newOrder(reload), odczyt: () => window.MXT_ODCZYTY.newObject(reload) }[b.dataset.new];
+        Promise.resolve(open()).catch(e => toast(e.message));
+      }));
+    });
   }
   async function openOrder(x, after) {
     if (x.type === 'montaz' && window.MXT_D1) return window.MXT_D1.installationForm(await api('d1/montaze/' + x.id), after);

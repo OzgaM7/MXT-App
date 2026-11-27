@@ -1215,3 +1215,9 @@ div.kpi { cursor: default; }
 [data-nosort] .table > thead th { cursor: default; }
 .hk-v, .kpi-v { overflow-wrap: anywhere; min-width: 0; }
 .hk-v { font-size: clamp(18px, 2.2vw, 26px); }
+
+/* „Dodaj zlecenie” – wybór rodzaju */
+.zl-types { display: grid; gap: 10px; margin-top: 12px; }
+.zl-type { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); cursor: pointer; font: inherit; }
+.zl-type:hover, .zl-type:focus-visible { border-color: var(--ink); }
+.zl-type b { font-size: 16px; } .zl-type span { color: var(--muted); font-size: 13px; }

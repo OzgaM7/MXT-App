@@ -291,6 +291,8 @@
     });
   }
 
-  window.MXT_SERWIS = { officeTab };
+  // Nowe zlecenie serwisowe spoza zakładki Serwisy (np. „Dodaj zlecenie” we Wszystkich zleceniach).
+  const newOrder = async after => orderForm(null, await api('serwisy/serwisanci'), after);
+  window.MXT_SERWIS = { officeTab, newOrder };
   window.MXT_MODULES.register('/moje-serwisy', { title: 'Moje serwisy', perm: 'service.own', render: myPage }, { tab: true });
 })();

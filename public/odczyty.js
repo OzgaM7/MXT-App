@@ -190,6 +190,8 @@
     const body = U().frame(root, path, 'Odczyty', 'Obiekty, terminy odczytów i ich wykonanie. „Wykonano” od razu ustawia kolejny termin.');
     await tab(body, () => U().render(path, root), alive);
   }
-  window.MXT_ODCZYTY = { tab };
+  // Nowy obiekt do odczytów (harmonogram) spoza zakładki Odczyty.
+  const newObject = async after => { const [sum, people] = await Promise.all([api('odczyty/podsumowanie'), api('odczyty/osoby')]); return objectForm(null, people, sum, after); };
+  window.MXT_ODCZYTY = { tab, newObject };
   window.MXT_MODULES.register('/odczyty', { title: 'Odczyty', perm: 'readings.manage', render: page }, { tab: true });
 })();
