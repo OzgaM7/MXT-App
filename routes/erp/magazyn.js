@@ -5,7 +5,7 @@ const { pool } = require('../../db');
 const { audit } = require('../../lib/audit');
 const { can, requirePerm } = require('../../lib/rbac');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V, listLimit, withTotal } = require('../_util');
+const { wrap, bad, idParam, V, listLimit, withTotal, fresh } = require('../_util');
 const usun = require('../../lib/usun');
 
 const r = express.Router();
@@ -29,7 +29,7 @@ r.post('/magazyny', manage, wrap(async (req, res) => {
   await audit(req, 'magazyn.utworzenie', { resource: 'warehouses', resourceId: q.rows[0].id, details: { kod: code } });
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/magazyny/:id', idParam, manage, wrap(async (req, res) => {
+r.patch('/magazyny/:id', idParam, manage, fresh('warehouses'), wrap(async (req, res) => {
   const b = req.body || {};
   const q = await pool.query('UPDATE warehouses SET name = coalesce($2, name), is_active = coalesce($3, is_active) WHERE id = $1 RETURNING *',
     [req.params.id, b.name !== undefined ? V.str(b.name, 100, true, 'Nazwa') : null, typeof b.is_active === 'boolean' ? b.is_active : null]);
@@ -91,7 +91,7 @@ r.post('/pozycje', items, wrap(async (req, res) => {
   await audit(req, 'magazyn.pozycja', { resource: 'stock_items', resourceId: q.rows[0].id, details: { indeks: o.sku, nazwa: o.name } });
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/pozycje/:id', idParam, items, wrap(async (req, res) => {
+r.patch('/pozycje/:id', idParam, items, fresh('stock_items'), wrap(async (req, res) => {
   const o = itemFields(req.body || {}, true), k = Object.keys(o);
   if (!k.length) throw bad(400, 'Brak zmian.');
   const before = (await pool.query('SELECT purchase_price, sale_price FROM stock_items WHERE id = $1', [req.params.id])).rows[0];
@@ -206,7 +206,7 @@ r.post('/dostawcy', requirePerm('purchases.manage'), wrap(async (req, res) => {
   await audit(req, 'dostawca.utworzenie', { resource: 'suppliers', resourceId: q.rows[0].id, details: { nazwa: o.name } });
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/dostawcy/:id', idParam, requirePerm('purchases.manage'), wrap(async (req, res) => {
+r.patch('/dostawcy/:id', idParam, requirePerm('purchases.manage'), fresh('suppliers'), wrap(async (req, res) => {
   const b = req.body || {}, o = supplierFields({ ...(await pool.query('SELECT * FROM suppliers WHERE id = $1', [req.params.id])).rows[0], ...b });
   if (typeof b.is_active === 'boolean') o.is_active = b.is_active;
   const k = Object.keys(o);

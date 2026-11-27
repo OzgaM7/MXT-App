@@ -8,7 +8,7 @@ const { can, requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const pdf = require('../../lib/pdf');
 const { tx } = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, fresh } = require('../_util');
 const { plToday } = require('../../lib/dzis');
 const usun = require('../../lib/usun');
 
@@ -43,7 +43,7 @@ r.post('/budynki/:id/lokale', idParam, edit, wrap(async (req, res) => {
     [req.params.id, o.number, o.floor, o.occupant, o.phone, o.area_m2, o.notes, req.user.id]);
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/lokale/:id', idParam, edit, wrap(async (req, res) => {
+r.patch('/lokale/:id', idParam, edit, fresh('units'), wrap(async (req, res) => {
   const cur = (await pool.query('SELECT * FROM units WHERE id = $1', [req.params.id])).rows[0];
   if (!cur) throw bad(404, 'Nie znaleziono lokalu.');
   const o = unitFields({ ...cur, ...(req.body || {}) });
@@ -75,7 +75,7 @@ r.get('/urzadzenia/:id', idParam, view, wrap(async (req, res) => {
   ].sort((a, b) => b.date.localeCompare(a.date));
   res.json({ ...d, type_label: DEV[d.type], events: ev.rows, readings: readings.rows, services: services.rows, documents: documents.rows, timeline });
 }));
-r.patch('/urzadzenia/:id', idParam, edit, wrap(async (req, res) => {
+r.patch('/urzadzenia/:id', idParam, edit, fresh('devices'), wrap(async (req, res) => {
   const b = req.body || {};
   const out = await tx(async c => {
     const d = (await c.query('SELECT * FROM devices WHERE id = $1 FOR UPDATE', [req.params.id])).rows[0];

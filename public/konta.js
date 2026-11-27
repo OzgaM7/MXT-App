@@ -83,7 +83,7 @@
         const r = await api('konta', body);
         setTimeout(() => showTemp(r), 50);
       } else {
-        await api('konta/' + a.id, body, 'PATCH');
+        await api('konta/' + a.id, { ...body, updated_at: a.updated_at }, 'PATCH');
         toast(body.is_active === false && a.is_active ? 'Konto wyłączone i wylogowane.' : 'Zapisano zmiany konta.');
       }
       after();

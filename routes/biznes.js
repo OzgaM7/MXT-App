@@ -10,7 +10,7 @@ const docs = require('../lib/docs');
 const nbp = require('../lib/nbp');
 const pdf = require('../lib/pdf');
 const offers = require('../lib/offers');
-const { wrap, idParam, V, bad, patchSql, sendPdf, assertFresh, listLimit } = require('./_util');
+const { wrap, idParam, V, bad, patchSql, sendPdf, assertFresh, listLimit, fresh } = require('./_util');
 
 const r = express.Router();
 const use = requirePerm('tasks.use'), admin = requirePerm('approvals.decide');
@@ -318,7 +318,7 @@ r.get('/oferty/:id', idParam, use, wrap(async (req, res) => {
 }));
 r.post('/oferty/kalkulacja', use, wrap(async (req, res) => res.json(await offers.calculate(req.body || {}))));
 r.post('/oferty', use, wrap(async (req, res) => res.status(201).json(await offers.create(req.body || {}, { user: req.user, req }))));
-r.patch('/oferty/:id', idParam, use, wrap(async (req, res) => res.json(await offers.update(req.params.id, req.body || {}, { user: req.user, req }))));
+r.patch('/oferty/:id', idParam, use, fresh('offers'), wrap(async (req, res) => res.json(await offers.update(req.params.id, req.body || {}, { user: req.user, req }))));
 r.post('/oferty/:id/wyslij', idParam, use, wrap(async (req, res) => res.status(201).json(await offers.requestSend(req.params.id, req.user, req))));
 r.post('/oferty/:id/wynik', idParam, use, wrap(async (req, res) => res.json(await offers.outcome(req.params.id, (req.body || {}).przyjeta === true, { user: req.user, req }))));
 r.get('/oferty/:id/pdf', idParam, use, wrap(async (req, res) => {
@@ -336,7 +336,7 @@ r.get('/sprzedaz', use, wrap(async (req, res) => {
     FROM sales_history s JOIN customers c ON c.id = s.customer_id LEFT JOIN offers o ON o.id = s.offer_id ORDER BY s.sale_date DESC, s.created_at DESC LIMIT 300`);
   res.json(q.rows);
 }));
-r.patch('/sprzedaz/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/sprzedaz/:id', idParam, use, fresh('sales_history'), wrap(async (req, res) => {
   const q = await pool.query('UPDATE sales_history SET status = $2 WHERE id = $1 RETURNING *', [req.params.id, V.oneOf((req.body || {}).status, ['w_realizacji', 'zrealizowana', 'anulowana'], 'Status')]);
   if (!q.rows[0]) throw bad(404, 'Nie znaleziono sprzedaży.');
   await audit(req, 'sprzedaz.zmiana', { resource: 'sales_history', resourceId: req.params.id, details: { status: q.rows[0].status } });
@@ -376,7 +376,7 @@ r.post('/reklamacje', use, wrap(async (req, res) => {
     res.status(201).json(q.rows[0]);
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
-r.patch('/reklamacje/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/reklamacje/:id', idParam, use, fresh('complaints'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   if (b.status !== undefined) { f.status = V.oneOf(b.status, CPL_ST, 'Status'); f.resolved_at = ['rozwiazana', 'odrzucona'].includes(f.status) ? plToday() : null; }
   if (b.resolution !== undefined) f.resolution = V.str(b.resolution, 5000);

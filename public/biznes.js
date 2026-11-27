@@ -323,7 +323,7 @@
       <div class="calc" id="o-calc"></div>`,
     { submit: o ? 'Zapisz nową wersję' : 'Zapisz ofertę (szkic)', wide: true, onSubmit: async f => {
       const b = collect(f);
-      const r = o ? await api('oferty/' + o.id, b, 'PATCH') : await api('oferty', { ...b, department_id: dep });
+      const r = o ? await api('oferty/' + o.id, { ...b, updated_at: o.updated_at }, 'PATCH') : await api('oferty', { ...b, department_id: dep });
       toast(o ? `Zapisano wersję ${r.version}.` : `Oferta ${r.number} zapisana jako szkic.`); if (after) after(r);
     } });
     const tb = box.querySelector('#o-items'), form = box.querySelector('form');
@@ -396,7 +396,7 @@
     body.querySelectorAll('[data-rkr]').forEach(b => b.addEventListener('click', () => { const x = list.find(y => y.id === b.dataset.rkr);
       modal('Rozwiązanie reklamacji ' + x.number, field('rk-res', 'Opis rozwiązania', `<textarea id="rk-res" name="resolution" rows="4">${esc(x.resolution)}</textarea>`) +
         field('rk-st', 'Status', `<select id="rk-st" name="status">${Object.entries(CPL_ST).map(([k, v]) => `<option value="${k}"${k === (x.status === 'zgloszona' ? 'rozwiazana' : x.status) ? ' selected' : ''}>${v}</option>`).join('')}</select>`),
-      { submit: 'Zapisz', onSubmit: async f => { await api('reklamacje/' + x.id, { resolution: val(f, 'resolution'), status: val(f, 'status') }, 'PATCH'); toast('Zapisano.'); reload(); } }); }));
+      { submit: 'Zapisz', onSubmit: async f => { await api('reklamacje/' + x.id, { resolution: val(f, 'resolution'), status: val(f, 'status'), updated_at: x.updated_at }, 'PATCH'); toast('Zapisano.'); reload(); } }); }));
     body.querySelector('#rk-new').addEventListener('click', async () => {
       const src = dep === 'podzielniki-i-montaze' ? await api('d1/budynki') : (sales || await api('sprzedaz'));
       modal('Zgłoś reklamację', `

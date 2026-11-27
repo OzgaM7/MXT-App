@@ -281,6 +281,39 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
       eq((await call(url, { notes: 'moja zmiana', updated_at: now.updated_at }, UZ.c, 'PATCH')).s, 200, label + ': zapis po odświeżeniu');
     }
 
+    // ---------- N5b: konflikt równoczesnej edycji we wszystkich formularzach (migracja 022: wersja każdego wpisu) ----------
+    {
+      const sfx2 = Date.now().toString().slice(-5);
+      const crew = (await call('d1/ekipy', { name: '[T-AUD] Ekipa wersja' }, UZ.c)).j; T.crews.push(crew.id);
+      const inst = (await call('d1/instalatorzy', { name: '[T-AUD] Instalator wersja', crew_id: crew.id }, UZ.c)).j;
+      const unit = (await call('d1/budynki/' + B2.id + '/lokale', { number: 'W' + sfx2 }, UZ.c)).j;
+      const task = (await call('tasks', { title: '[T-AUD] Zadanie wersja' }, UZ.c)).j;
+      const sup = (await call('magazyn/dostawcy', { name: '[T-AUD] Dostawca wersja' }, MG.c)).j; T.suppliers.push(sup.id);
+      const kt = (await call('d1/kontrakty', { customer_id: PCUST.id, title: '[T-AUD] Kontrakt wersja' }, UZ.c)).j; T.projects.push(kt.id);
+      const cases = [
+        ['ekipa', 'd1/ekipy/' + crew.id, async () => (await call('d1/ekipy', null, UZ.c)).j.find(c => c.id === crew.id), { leader: 'A' }, { leader: 'B' }, UZ.c],
+        ['instalator', 'd1/instalatorzy/' + inst.id, async () => (await call('d1/ekipy', null, UZ.c)).j.flatMap(c => c.installers).find(i => i.id === inst.id), { phone: '1' }, { phone: '2' }, UZ.c],
+        ['lokal', 'd1/lokale/' + unit.id, async () => (await call('d1/budynki/' + B2.id + '/lokale', null, UZ.c)).j.find(u => u.id === unit.id), { number: 'W' + sfx2, notes: 'A' }, { number: 'W' + sfx2, notes: 'B' }, UZ.c],
+        ['zadanie', 'tasks/' + task.id, async () => (await call('tasks', null, UZ.c)).j.find(t => t.id === task.id), { title: '[T-AUD] Zadanie A' }, { title: '[T-AUD] Zadanie B' }, UZ.c],
+        ['dostawca', 'magazyn/dostawcy/' + sup.id, async () => (await call('magazyn/dostawcy', null, MG.c)).j.find(x => x.id === sup.id), { name: '[T-AUD] Dostawca A' }, { name: '[T-AUD] Dostawca B' }, MG.c],
+        ['pozycja magazynowa', 'magazyn/pozycje/' + IT.id, async () => (await call('magazyn/pozycje/' + IT.id, null, MG.c)).j, { location: 'A1' }, { location: 'B1' }, MG.c],
+        ['magazyn', 'magazyn/magazyny/' + W.id, async () => (await call('magazyn/magazyny', null, MG.c)).j.find(x => x.id === W.id), { name: W.name }, { name: W.name }, MG.c],
+        ['kontrakt', 'd1/projekty/' + kt.id, async () => (await call('d1/projekty/' + kt.id, null, KR.c)).j, { title: '[T-AUD] Kontrakt A' }, { title: '[T-AUD] Kontrakt B' }, KR.c],
+        ['pracownik (kartoteka)', 'pracownicy/' + UZ.id, async () => (await call('pracownicy', null, KR.c)).j.rows.find(x => x.id === UZ.id), { position: 'A' }, { position: 'B' }, KR.c],
+        ['konto', 'konta/' + MG.id, async () => (await call('konta', null, AD.c)).j.find(x => x.id === MG.id), { phone: '111' }, { phone: '222' }, AD.c],
+      ];
+      for (const [label, url, load, bodyA, bodyB, who] of cases) {
+        const seen = (await load()).updated_at;
+        ok(!!seen, label + ': formularz dostaje wersję wpisu');
+        eq((await call(url, { ...bodyA, updated_at: seen }, who, url.startsWith('tasks') ? 'PATCH' : 'PATCH')).s, 200, label + ': zapis z aktualnej wersji');
+        r = await call(url, { ...bodyB, updated_at: seen }, who, 'PATCH');
+        ok(r.s === 409 && /zmienił/.test(r.j.error), label + ': zapis ze starej wersji – 409 zamiast nadpisania');
+      }
+      const before = (await pool.query('SELECT updated_at FROM stock_items WHERE id = $1', [IT.id])).rows[0].updated_at;
+      await call('magazyn/dokumenty', { kind: 'PZ', warehouse_id: W.id, lines: [{ item_id: IT.id, qty: 1, unit_cost: 12 }] }, MG.c);
+      ok((await pool.query('SELECT updated_at FROM stock_items WHERE id = $1', [IT.id])).rows[0].updated_at > before, 'zmiana systemowa (przyjęcie PZ) też zmienia wersję pozycji');
+    }
+
     // ---------- N6: długie listy – „Pokazano X z Y” (total_count) i większa porcja na żądanie ----------
     for (const u of ['klienci', 'd1/budynki', 'polisy', 'magazyn/dokumenty', 'magazyn/pozycje', 'zakupy', 'tasks', 'czesci/zamowienia']) {
       const who = ['polisy', 'czesci/zamowienia', 'klienci', 'd1/budynki', 'tasks'].includes(u) ? AD.c : MG.c;
@@ -323,6 +356,7 @@ const NIP = ['7110079199', '7110158384', '7110316765', '7110395954'];
     await q('DELETE FROM buildings WHERE id = ANY($1::uuid[])', [T.buildings]);
     await q('DELETE FROM customers WHERE id = ANY($1::uuid[]) OR created_by = ANY($2::uuid[])', [T.customers, users]);
     await q('DELETE FROM notifications WHERE user_id = ANY($1::uuid[])', [users]);
+    await q('DELETE FROM tasks WHERE created_by = ANY($1::uuid[])', [users]);
     await q('DELETE FROM sessions WHERE user_id = ANY($1::uuid[])', [users]);
     await q('DELETE FROM users WHERE id = ANY($1::uuid[])', [users]);
     await restoreFlags();

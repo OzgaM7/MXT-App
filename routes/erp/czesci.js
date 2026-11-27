@@ -8,7 +8,7 @@ const { audit } = require('../../lib/audit');
 const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V, listLimit } = require('../_util');
+const { wrap, bad, idParam, V, listLimit, fresh } = require('../_util');
 const { plToday } = require('../../lib/dzis');
 const usun = require('../../lib/usun');
 
@@ -84,7 +84,7 @@ r.post('/czesci/zamowienia', use, wrap(async (req, res) => {
   await audit(req, 'czesci.zamowienie', { resource: 'part_orders', resourceId: o.id, details: { numer: o.number, wartosc: Number(o.total_net) } });
   res.status(201).json(o);
 }));
-r.put('/czesci/zamowienia/:id', idParam, use, wrap(async (req, res) => {
+r.put('/czesci/zamowienia/:id', idParam, use, fresh('part_orders'), wrap(async (req, res) => {
   const b = req.body || {};
   const o = await tx(async c => {
     const cur = await load(c, req.params.id, true);

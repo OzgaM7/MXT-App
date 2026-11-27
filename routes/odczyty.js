@@ -8,7 +8,7 @@ const { requirePerm } = require('../lib/rbac');
 const { notify } = require('../lib/notify');
 const R = require('../lib/readings');
 const xlsx = require('../lib/xlsx');
-const { wrap, idParam, V, bad } = require('./_util');
+const { wrap, idParam, V, bad, fresh } = require('./_util');
 const usun = require('../lib/usun');
 
 const r = express.Router();
@@ -206,7 +206,7 @@ r.get('/:id', idParam, use, wrap(async (req, res) => {
   res.json({ ...s, history: h.rows, devices_by_type: dev.rows });
 }));
 
-r.patch('/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/:id', idParam, use, fresh('reading_schedules'), wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

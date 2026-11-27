@@ -6,7 +6,7 @@ const { audit } = require('../lib/audit');
 const { requirePerm, can, PERMISSIONS, ROLES } = require('../lib/rbac');
 const ops = require('../lib/operations');
 const catalog = require('../lib/ai/catalog');
-const { listLimit, withTotal } = require('./_util');
+const { listLimit, withTotal, fresh } = require('./_util');
 
 const r = express.Router();
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(e => {
@@ -91,7 +91,7 @@ async function loadTaskFor(req, mode) {
   return t;
 }
 
-r.patch('/tasks/:id', idParam, requirePerm('tasks.use'), wrap(async (req, res) => {
+r.patch('/tasks/:id', idParam, requirePerm('tasks.use'), fresh('tasks'), wrap(async (req, res) => {
   await loadTaskFor(req, 'edit');
   const o = taskInput(req.body || {}, true), keys = Object.keys(o);
   if (!keys.length) throw new ops.PolicyError(400, 'Brak zmian.');

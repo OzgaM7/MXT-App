@@ -44,6 +44,8 @@ function checkFresh(current, seen) {
   if (Number.isNaN(t)) return;
   if (Math.abs(new Date(current).getTime() - t) >= 1) throw bad(409, 'Ktoś inny zmienił te dane po otwarciu formularza. Zamknij okno, odśwież i wprowadź zmiany ponownie.');
 }
+// Middleware dla tras edycji: wersja z formularza (updated_at) musi się zgadzać z bazą – inaczej 409 zamiast nadpisania.
+const fresh = table => wrap(async (req, res, next) => { await assertFresh(require('../db').pool, table, req.params.id, (req.body || {}).updated_at); next(); });
 async function assertFresh(db, table, id, seen) {
   if (!seen) return;
   const row = (await db.query(`SELECT updated_at FROM ${table} WHERE id = $1`, [id])).rows[0];
@@ -62,4 +64,4 @@ function sendPdf(res, buf, filename, inline = true) {
   res.end(buf);
 }
 
-module.exports = { UUID, bad, wrap, idParam, V, patchSql, sendPdf, checkFresh, assertFresh, listLimit, withTotal };
+module.exports = { UUID, bad, wrap, idParam, V, patchSql, sendPdf, checkFresh, assertFresh, fresh, listLimit, withTotal };

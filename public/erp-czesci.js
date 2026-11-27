@@ -54,7 +54,7 @@
       ${field('oc-n', 'Uwagi', `<input id="oc-n" name="note" maxlength="2000" value="${esc(o ? o.note : '')}">`)}`,
     { submit: o ? 'Zapisz zamówienie' : 'Utwórz zamówienie', wide: true, onSubmit: async f => {
       const lines = Array.from({ length: N }, (_, i) => ({ item_id: val(f, 'item' + i), qty: val(f, 'qty' + i), unit_price: val(f, 'price' + i), discount_pct: val(f, 'disc' + i) || 0 })).filter(l => l.item_id && l.qty);
-      if (o) await api('czesci/zamowienia/' + o.id, { lines, vehicle: val(f, 'vehicle'), note: val(f, 'note') }, 'PUT');
+      if (o) await api('czesci/zamowienia/' + o.id, { lines, vehicle: val(f, 'vehicle'), note: val(f, 'note'), updated_at: o.updated_at }, 'PUT');
       else {
         if (!val(f, 'customer_id')) throw new Error('Wybierz klienta z kartoteki (lub dodaj go w CRM).');
         const x = await api('czesci/zamowienia', { customer_id: val(f, 'customer_id'), lines, vehicle: val(f, 'vehicle'), note: val(f, 'note') });
@@ -181,7 +181,7 @@
       ${o ? '<p class="muted small">Pozycję usuwasz, wybierając „– wybierz –”. Zmiana dostawcy: anuluj szkic i utwórz nowe zamówienie.</p>' : ''}`,
     { submit: o ? 'Zapisz zmiany' : 'Zapisz szkic', wide: true, onSubmit: async f => {
       const lines = idx.map(i => ({ item_id: val(f, 'item' + i), qty: val(f, 'qty' + i), unit_price: val(f, 'price' + i) })).filter(l => l.item_id && l.qty);
-      if (o) { await api('zakupy/' + o.id, { expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines }, 'PUT'); toast('Szkic ' + o.number + ' zapisany.'); }
+      if (o) { await api('zakupy/' + o.id, { expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines, updated_at: o.updated_at }, 'PUT'); toast('Szkic ' + o.number + ' zapisany.'); }
       else { const x = await api('zakupy', { supplier_id: val(f, 'sup'), expected_date: val(f, 'exp') || null, note: val(f, 'note'), lines }); toast('Szkic ' + x.number + ' zapisany.'); }
       after();
     } });

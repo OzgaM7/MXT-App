@@ -320,7 +320,7 @@
       ${t ? `<p class="muted small">Utworzone przez ${esc(t.created_by_login || '–')} · ${esc(fdt(t.created_at))}</p><button type="button" class="btn btn-ghost btn-sm txt-danger" id="t-del">Usuń zadanie</button>` : ''}`,
     { submit: t ? 'Zapisz zmiany' : 'Dodaj zadanie', onSubmit: async f => {
       const b = { title: val(f, 'title'), description: val(f, 'description'), department_id: val(f, 'department_id') || null, assignee_id: val(f, 'assignee_id') || null, priority: val(f, 'priority'), due_date: val(f, 'due_date') || null };
-      if (t) await api('tasks/' + t.id, b, 'PATCH'); else await api('tasks', b);
+      if (t) await api('tasks/' + t.id, { ...b, updated_at: t.updated_at }, 'PATCH'); else await api('tasks', b);
       toast(t ? 'Zadanie zapisane.' : 'Zadanie dodane.'); if (after) after();
     } });
     if (t && t.assignee_type === 'agent') agentTaskPanel(box, t, after);

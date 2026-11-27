@@ -509,7 +509,7 @@
       const c = crews.find(x => x.id === b.dataset.cedit);
       modal('Ekipa ' + c.name, field('ce-n', 'Nazwa', `<input id="ce-n" name="name" required maxlength="100" value="${esc(c.name)}">`) + `<div class="field-row">${field('ce-l', 'Brygadzista', `<input id="ce-l" name="leader" maxlength="100" value="${esc(c.leader || '')}">`)}${field('ce-p', 'Telefon', `<input id="ce-p" name="phone" maxlength="50" value="${esc(c.phone || '')}">`)}</div>
         <div class="ap-actions">${U().delBtn('d1/ekipy/' + c.id, 'Ekipa ' + c.name, 'Dezaktywuj ekipę – jej montaże zostaną w historii.', 'Usuń ekipę')}</div>`,
-      { submit: 'Zapisz', onSubmit: async f => { await api('d1/ekipy/' + c.id, { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone') }, 'PATCH'); toast('Ekipa zapisana.'); reload(); } });
+      { submit: 'Zapisz', onSubmit: async f => { await api('d1/ekipy/' + c.id, { name: val(f, 'name'), leader: val(f, 'leader'), phone: val(f, 'phone'), updated_at: c.updated_at }, 'PATCH'); toast('Ekipa zapisana.'); reload(); } });
     }));
     const allInst = crews.flatMap(c => c.installers);
     body.querySelectorAll('[data-inst]').forEach(b => b.addEventListener('click', () => {
@@ -520,7 +520,7 @@
         <label class="toggle"><input type="checkbox" name="active"${i.is_active ? ' checked' : ''}> Instalator aktywny</label>
         ${i.user_login ? `<p class="muted small">Powiązane konto: ${esc(i.user_login)} (zmiana w Konta i role).</p>` : ''}
         <div class="ap-actions">${U().delBtn('d1/instalatorzy/' + i.id, 'Instalator ' + i.name, 'Odznacz „Instalator aktywny”.', 'Usuń instalatora')}</div>`,
-      { submit: 'Zapisz', onSubmit: async f => { await api('d1/instalatorzy/' + i.id, { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications'), is_active: f.elements.active.checked }, 'PATCH'); toast('Instalator zapisany.'); reload(); } });
+      { submit: 'Zapisz', onSubmit: async f => { await api('d1/instalatorzy/' + i.id, { name: val(f, 'name'), crew_id: val(f, 'crew_id') || null, phone: val(f, 'phone'), qualifications: val(f, 'qualifications'), is_active: f.elements.active.checked, updated_at: i.updated_at }, 'PATCH'); toast('Instalator zapisany.'); reload(); } });
     }));
   }
 

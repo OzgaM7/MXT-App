@@ -62,7 +62,7 @@
           ${field('e-h', 'Data zatrudnienia', `<input id="e-h" name="hired_at" type="date" value="${esc(x.hired_at ? String(x.hired_at).slice(0, 10) : '')}">`)}</div>
         ${field('e-n', 'Notatki kadrowe', `<textarea id="e-n" name="hr_notes" rows="3" maxlength="2000">${esc(x.hr_notes || '')}</textarea>`)}
         <p class="muted small">Stawka liczy koszt robocizny dla nowych wpisów czasu pracy (wcześniejsze wpisy zachowują stawkę z dnia wpisu).</p>`,
-      { submit: 'Zapisz dane kadrowe', wide: adm, onSubmit: async f => { await api('pracownicy/' + x.id, { position: val(f, 'position'), hourly_rate: val(f, 'hourly_rate'), employment: val(f, 'employment'), hired_at: val(f, 'hired_at') || null, hr_notes: val(f, 'hr_notes') }, 'PATCH'); toast('Kartoteka zapisana.'); reload(); } });
+      { submit: 'Zapisz dane kadrowe', wide: adm, onSubmit: async f => { await api('pracownicy/' + x.id, { updated_at: x.updated_at, position: val(f, 'position'), hourly_rate: val(f, 'hourly_rate'), employment: val(f, 'employment'), hired_at: val(f, 'hired_at') || null, hr_notes: val(f, 'hr_notes') }, 'PATCH'); toast('Kartoteka zapisana.'); reload(); } });
       const on = (sel, fn) => { const el = box.querySelector(sel); if (el) el.addEventListener('click', () => fn().catch(e => toast(e.message))); };
       on('#e-acc', () => accForm(x));
       on('#e-tog', async () => {

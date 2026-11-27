@@ -5,7 +5,7 @@ const express = require('express'), crypto = require('crypto'), bcrypt = require
 const { pool } = require('../db');
 const { audit } = require('../lib/audit');
 const { requirePerm, ROLES, EXTRA_ROLES } = require('../lib/rbac');
-const { wrap, bad, idParam, V } = require('./_util');
+const { wrap, bad, idParam, V, fresh } = require('./_util');
 
 const r = express.Router();
 const manage = requirePerm('users.manage');
@@ -26,7 +26,7 @@ function extraRoles(v, main) {
 }
 const email = v => { const e = V.str(v, 200); if (e && !EMAIL.test(e)) throw bad(400, 'Nieprawidłowy adres e-mail.'); return e; };
 
-const LIST = `SELECT u.id, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.notify_email, u.must_change_password, u.created_at,
+const LIST = `SELECT u.id, u.updated_at, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.notify_email, u.must_change_password, u.created_at,
     (SELECT max(ts) FROM audit_logs a WHERE a.actor_id = u.id::text AND a.action = 'logowanie' AND a.status = 'ok') AS last_login,
     (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions,
     (SELECT count(*)::int FROM push_subscriptions p WHERE p.user_id = u.id) AS push_devices,
@@ -83,7 +83,7 @@ r.post('/', manage, wrap(async (req, res) => {
   } finally { client.release(); }
 }));
 
-r.patch('/:id', idParam, manage, wrap(async (req, res) => {
+r.patch('/:id', idParam, manage, fresh('users'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   const client = await pool.connect();
   try {

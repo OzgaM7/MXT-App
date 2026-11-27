@@ -7,7 +7,7 @@ const { audit } = require('../lib/audit');
 const { requirePerm, can } = require('../lib/rbac');
 const docs = require('../lib/docs');
 const pdf = require('../lib/pdf');
-const { wrap, idParam, V, bad, patchSql, sendPdf, checkFresh, assertFresh, listLimit } = require('./_util');
+const { wrap, idParam, V, bad, patchSql, sendPdf, checkFresh, assertFresh, listLimit, fresh } = require('./_util');
 const { notify } = require('../lib/notify');
 const { usersOfCrew } = require('../lib/scope');
 
@@ -160,7 +160,7 @@ r.post('/urzadzenia', use, wrap(async (req, res) => {
     res.status(201).json({ added: serials.length });
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
-r.patch('/urzadzenia/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/urzadzenia/:id', idParam, use, fresh('devices'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   if (b.status !== undefined) f.status = V.oneOf(b.status, ['magazyn', 'zamontowane', 'zdemontowane', 'wadliwe'], 'Status');
   if (b.location !== undefined) f.location = V.str(b.location, 200);
@@ -189,7 +189,7 @@ r.post('/ekipy', use, wrap(async (req, res) => {
   await audit(req, 'ekipa.utworzenie', { resource: 'crews', resourceId: q.rows[0].id });
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/ekipy/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/ekipy/:id', idParam, use, fresh('crews'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   for (const [k, m] of [['name', 100], ['leader', 100], ['phone', 50]]) if (b[k] !== undefined) f[k] = V.str(b[k], m, k === 'name', 'Nazwa ekipy');
   if (b.is_active !== undefined) f.is_active = !!b.is_active;
@@ -206,7 +206,7 @@ r.post('/instalatorzy', use, wrap(async (req, res) => {
   await audit(req, 'instalator.dodanie', { resource: 'installers', resourceId: q.rows[0].id });
   res.status(201).json(q.rows[0]);
 }));
-r.patch('/instalatorzy/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/instalatorzy/:id', idParam, use, fresh('installers'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   if (b.crew_id !== undefined) f.crew_id = V.uuid(b.crew_id);
   for (const [k, m] of [['name', 120], ['phone', 50], ['qualifications', 500]]) if (b[k] !== undefined) f[k] = V.str(b[k], m, k === 'name', 'Imię i nazwisko');
@@ -414,7 +414,7 @@ r.post('/kontrakty', use, wrap(async (req, res) => {
     res.status(201).json(q.rows[0]);
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }));
-r.patch('/kontrakty/:id', idParam, use, wrap(async (req, res) => {
+r.patch('/kontrakty/:id', idParam, use, fresh('projects'), wrap(async (req, res) => {
   const b = req.body || {}, f = {};
   if (b.status !== undefined) f.status = V.oneOf(b.status, ['oferta', 'w_realizacji', 'zakonczony', 'rozliczony', 'anulowany'], 'Status');
   if (b.title !== undefined) f.title = V.str(b.title, 200, true, 'Nazwa kontraktu');

@@ -130,7 +130,7 @@
         await api('odczyty', b); toast('Obiekt dodany do odczytów.');
       } else {
         b.is_active = f.querySelector('[name=is_active]').checked;
-        await api('odczyty/' + s.id, b, 'PATCH'); toast('Zapisano zmiany.');
+        await api('odczyty/' + s.id, { ...b, updated_at: s.updated_at }, 'PATCH'); toast('Zapisano zmiany.');
       }
       after();
     } });

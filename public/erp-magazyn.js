@@ -85,7 +85,7 @@
         category: val(f, 'category'), replacement_nos: val(f, 'replacement_nos'), unit: val(f, 'unit'), min_qty: val(f, 'min_qty'), location: val(f, 'location'), vehicle_type: val(f, 'vehicle_type'),
         purchase_price: val(f, 'purchase_price'), sale_price: val(f, 'sale_price'), supplier_id: val(f, 'supplier_id') || null, description: val(f, 'description') };
       if (it) b.is_active = f.elements.active.checked;
-      it ? await api('magazyn/pozycje/' + it.id, b, 'PATCH') : await api('magazyn/pozycje', b); toast('Pozycja zapisana.'); after();
+      it ? await api('magazyn/pozycje/' + it.id, { ...b, updated_at: it.updated_at }, 'PATCH') : await api('magazyn/pozycje', b); toast('Pozycja zapisana.'); after();
     } });
     // Marża liczona na bieżąco (podgląd) – zapisane ceny przelicza serwer.
     const box = document.getElementById('modal-box'), mg = box.querySelector('#if-mg');
@@ -192,7 +192,7 @@
       ${s ? `<label class="toggle"><input type="checkbox" name="active"${s.is_active ? ' checked' : ''}> Aktywny</label><div class="ap-actions">${U().delBtn('magazyn/dostawcy/' + s.id, 'Dostawca ' + s.name, 'Odznacz „Aktywny” – dokumenty i zamówienia zostaną.', 'Usuń dostawcę')}</div>` : ''}`,
     { submit: 'Zapisz', onSubmit: async f => {
       const b = { name: val(f, 'name'), tax_id: val(f, 'tax_id'), payment_days: val(f, 'payment_days'), contact: val(f, 'contact'), phone: val(f, 'phone'), email: val(f, 'email'), address: val(f, 'address'), notes: val(f, 'notes') };
-      if (s) { b.is_active = f.elements.active.checked; await api('magazyn/dostawcy/' + s.id, b, 'PATCH'); } else await api('magazyn/dostawcy', b);
+      if (s) { b.is_active = f.elements.active.checked; await api('magazyn/dostawcy/' + s.id, { ...b, updated_at: s.updated_at }, 'PATCH'); } else await api('magazyn/dostawcy', b);
       toast('Dostawca zapisany.'); reload();
     } });
     const nb = body.querySelector('#su-new'); if (nb) nb.addEventListener('click', () => form(null));

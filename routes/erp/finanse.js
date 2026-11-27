@@ -9,7 +9,7 @@ const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const xlsx = require('../../lib/xlsx');
 const S = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V, listLimit } = require('../_util');
+const { wrap, bad, idParam, V, listLimit, fresh } = require('../_util');
 const { plToday } = require('../../lib/dzis');
 const usun = require('../../lib/usun');
 
@@ -86,7 +86,7 @@ r.post('/zakupy/propozycje', buy, wrap(async (req, res) => {
   await audit(req, 'zakup.propozycje', { resource: 'purchase_orders', details: { utworzono: out.length } });
   res.status(201).json({ created: out });
 }));
-r.put('/zakupy/:id', idParam, buy, wrap(async (req, res) => {
+r.put('/zakupy/:id', idParam, buy, fresh('purchase_orders'), wrap(async (req, res) => {
   const b = req.body || {};
   const o = await tx(async c => {
     const x = await loadPo(c, req.params.id, true);

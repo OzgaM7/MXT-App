@@ -8,7 +8,7 @@ const { requirePerm } = require('../../lib/rbac');
 const docs = require('../../lib/docs');
 const pdf = require('../../lib/pdf');
 const { tx, r2 } = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V, sendPdf } = require('../_util');
+const { wrap, bad, idParam, V, sendPdf, fresh } = require('../_util');
 const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
@@ -173,7 +173,7 @@ r.get('/projekty/:id', idParam, view, wrap(async (req, res) => {
   res.json({ ...p, money: (await projectMoney(pool, [id]))[id], budget: budget.rows, members: members.rows, events: events.rows, orders: orders.rows,
     materials: mats.rows, time: time.rows, finance: fin.rows, documents: documents.rows });
 }));
-r.patch('/projekty/:id', idParam, view, wrap(async (req, res) => {
+r.patch('/projekty/:id', idParam, view, fresh('projects'), wrap(async (req, res) => {
   const b = req.body || {}, o = {};
   if (b.manager_id !== undefined) o.manager_id = V.uuid(b.manager_id, 'Kierownik projektu');
   if (b.billing !== undefined) o.billing = V.oneOf(b.billing, ['po_zleceniu', 'miesiecznie', 'ryczalt'], 'Sposób rozliczania');

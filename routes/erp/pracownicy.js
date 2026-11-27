@@ -6,7 +6,7 @@ const { pool } = require('../../db');
 const { audit } = require('../../lib/audit');
 const { can, requirePerm, ROLES } = require('../../lib/rbac');
 const { tx, r2 } = require('../../lib/erp/stock');
-const { wrap, bad, idParam, V } = require('../_util');
+const { wrap, bad, idParam, V, fresh } = require('../_util');
 const { plToday } = require('../../lib/dzis');
 
 const r = express.Router();
@@ -16,7 +16,7 @@ const REL = { installation: 'installations', service_order: 'service_orders', re
 
 r.get('/pracownicy', mgr, wrap(async (req, res) => {
   const from = V.date(req.query.od, 'Od') || plToday(-30);
-  const q = await pool.query(`SELECT u.id, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.position, u.hourly_rate::float AS hourly_rate, u.employment, u.hired_at, u.hr_notes,
+  const q = await pool.query(`SELECT u.id, u.updated_at, u.login, u.full_name, u.email, u.phone, u.role, u.extra_roles, u.is_active, u.position, u.hourly_rate::float AS hourly_rate, u.employment, u.hired_at, u.hr_notes,
       (SELECT count(*)::int FROM service_orders o WHERE o.assigned_to = u.id AND o.status IN ('przypisane','zaplanowane','w_realizacji','ponowna_wizyta')) AS serwisy_otwarte,
       (SELECT count(*)::int FROM reading_schedules s WHERE s.assigned_to = u.id AND s.is_active AND s.next_due <= ${TODAY} + 30) AS odczyty_30d,
       (SELECT count(*)::int FROM installations x JOIN installers i ON i.crew_id = x.crew_id WHERE i.user_id = u.id AND x.status IN ('zaplanowany','w_toku') AND x.planned_date <= ${TODAY} + 14) AS montaze_14d,
@@ -25,7 +25,7 @@ r.get('/pracownicy', mgr, wrap(async (req, res) => {
     FROM users u ORDER BY u.is_active DESC, coalesce(nullif(u.full_name, ''), u.login)`, [from]);
   res.json({ from, roles: ROLES, rows: q.rows });
 }));
-r.patch('/pracownicy/:id', idParam, mgr, wrap(async (req, res) => {
+r.patch('/pracownicy/:id', idParam, mgr, fresh('users'), wrap(async (req, res) => {
   const b = req.body || {}, o = {};
   if (b.position !== undefined) o.position = V.str(b.position, 100);
   if (b.hourly_rate !== undefined) o.hourly_rate = b.hourly_rate === '' || b.hourly_rate == null ? null : r2(V.num(b.hourly_rate, 0, 100000, 'Stawka godzinowa'));

@@ -206,7 +206,7 @@
       <div class="field-row">${field('ps-m', 'Kierownik projektu', `<select id="ps-m" name="manager"><option value="">– brak –</option>${users.map(u => `<option value="${esc(u.id)}"${p.manager_id === u.id ? ' selected' : ''}>${esc(u.full_name || u.login)}</option>`).join('')}</select>`)}
         ${field('ps-v', 'Wartość umowy netto', `<input id="ps-v" name="value" type="number" min="0" step="0.01" value="${esc(p.value_net)}">`)}</div>
       <div class="field-row">${field('ps-a', 'Początek', `<input id="ps-a" name="start" type="date" value="${esc(p.start_date || '')}">`)}${field('ps-e', 'Koniec', `<input id="ps-e" name="end" type="date" value="${esc(p.end_date || '')}">`)}</div>`,
-    { submit: 'Zapisz', onSubmit: async f => { await api('d1/projekty/' + id, { title: val(f, 'title'), status: val(f, 'status'), billing: val(f, 'billing'), manager_id: val(f, 'manager') || null, value_net: val(f, 'value'), start_date: val(f, 'start') || null, end_date: val(f, 'end') || null }, 'PATCH'); toast('Projekt zapisany.'); refresh(); if (after) after(); } }));
+    { submit: 'Zapisz', onSubmit: async f => { await api('d1/projekty/' + id, { updated_at: p.updated_at, title: val(f, 'title'), status: val(f, 'status'), billing: val(f, 'billing'), manager_id: val(f, 'manager') || null, value_net: val(f, 'value'), start_date: val(f, 'start') || null, end_date: val(f, 'end') || null }, 'PATCH'); toast('Projekt zapisany.'); refresh(); if (after) after(); } }));
     if ($('#pc-bud')) $('#pc-bud').addEventListener('click', () => {
       const cell = (kind, c) => `<input type="number" min="0" step="0.01" inputmode="decimal" name="${kind}:${c}" aria-label="${kind === 'przychod' ? 'Przychód' : 'Koszt'}: ${esc(CAT[c])}" value="${m.plan[kind + ':' + c] ?? ''}">`;
       modal('Budżet projektu ' + p.number, `<p class="muted">Plan przychodów i kosztów w podziale na kategorie. Wykonanie liczy się z faktur, wydań materiałów i czasu pracy.</p>
@@ -291,7 +291,7 @@
     box.querySelector('#dv-save').addEventListener('click', async () => {
       const g = n => box.querySelector(`#dv-f [name="${n}"]`).value.trim();
       const b = { manufacturer: g('manufacturer'), model: g('model'), radio_id: g('radio_id'), unit_id: g('unit_id') || null, location: g('location'), legalization_until: g('legalization_until') || null, status: g('status'), powod: g('powod') };
-      try { await api('d1/urzadzenia/' + id, b, 'PATCH'); toast('Dane urządzenia zapisane.'); refresh(); if (after) after(); } catch (x) { toast(x.message); }
+      try { await api('d1/urzadzenia/' + id, { ...b, updated_at: d.updated_at }, 'PATCH'); toast('Dane urządzenia zapisane.'); refresh(); if (after) after(); } catch (x) { toast(x.message); }
     });
     box.querySelector('#dv-ev').addEventListener('click', () => modal('Zdarzenie urządzenia ' + d.serial_no, `<div class="field-row">${field('de-k', 'Rodzaj', `<select id="de-k" name="k">${['wymiana', 'serwis', 'legalizacja', 'demontaz', 'montaz', 'przeniesienie', 'inne'].map(k => `<option value="${k}">${EV[k]}</option>`).join('')}</select>`)}
       ${field('de-d', 'Data', `<input id="de-d" name="d" type="date" value="${today()}">`)}</div>${field('de-t', 'Opis', '<textarea id="de-t" name="t" rows="3" required maxlength="1000"></textarea>')}`,
@@ -317,7 +317,7 @@
       ${u ? `<label class="toggle"><input type="checkbox" name="active"${u.is_active ? ' checked' : ''}> Lokal aktywny</label><div class="ap-actions">${U().delBtn('d1/lokale/' + u.id, 'Lokal ' + u.number, 'Odznacz „Lokal aktywny” – historia urządzeń i zleceń zostanie.', 'Usuń lokal')}</div>` : ''}`,
     { submit: 'Zapisz', onSubmit: async f => {
       const b = { number: val(f, 'number'), floor: val(f, 'floor'), area_m2: val(f, 'area'), occupant: val(f, 'occupant'), phone: val(f, 'phone'), notes: val(f, 'notes') };
-      if (u) await api('d1/lokale/' + u.id, { ...b, is_active: f.elements.active.checked }, 'PATCH'); else await api('d1/budynki/' + buildingId + '/lokale', b);
+      if (u) await api('d1/lokale/' + u.id, { ...b, is_active: f.elements.active.checked, updated_at: u.updated_at }, 'PATCH'); else await api('d1/budynki/' + buildingId + '/lokale', b);
       toast('Lokal zapisany.'); back();
     } });
     holder.querySelector('[data-u-one]').addEventListener('click', () => unitForm(null));
